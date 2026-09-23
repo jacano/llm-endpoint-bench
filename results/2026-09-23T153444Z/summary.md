@@ -10,8 +10,7 @@ OpenCode names it `deepseek-v4.1-flash`.
 - OpenCode (Go): 48 clean requests.
 - The phases `transport`, `short`, `long`, `prefill` and `concurrent` ran on both sides.
   Each phase has 3, 20, 16, 1 and 4 samples for a side, plus the concurrent summary.
-- The tool reads each token count from the `usage` block of the response. It never counts
-  SSE lines.
+- The tool reads each token count from the `usage` block of the response.
 
 This campaign repeats the A/B test of the first campaign (macOS, same date) on a different
 host. The purpose is to find out whether the difference between the two routes depends on

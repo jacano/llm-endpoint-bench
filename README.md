@@ -2,7 +2,7 @@
 
 This repository measures three properties of an OpenAI-compatible model endpoint: latency, throughput, and tokens per second (TPS).
 
-The tool is `bench.py`. It sends each request with `curl`, so no client library retry hides the slow end of the distribution. It reads the token counts from the `usage` block of the response. It does not count server-sent event (SSE) lines, because empty deltas and reasoning deltas make a line count wrong.
+The tool is `bench.py`. It sends each request with `curl`, so no client library retry hides the slow end of the distribution. It reads the token counts from the `usage` block of the response.
 
 The directory `results/` holds one directory for each campaign, and each of them holds a `summary.md` and its raw records. `results/README.md` is the index of the campaigns. The campaign of the first session ran on macOS; the second campaign repeated the same test on Windows 11.
 
@@ -139,7 +139,6 @@ Hermes Agent has a provider profile for each endpoint. Set `model.provider` to `
 - `tok_per_s_visible` is the number of content tokens divided by the time of the content phase. Do not read this value for an answer of 2 or 3 tokens, because the result is a large number without meaning. The tool does not print the value for a phase whose median answer holds fewer than 10 content tokens, and the command `compare` hides the line.
 - `models_reuse.ttfb_ms` is the TTFB with a ready socket. The value is the fixed cost of the gateway for each request.
 - `models_body.n_ids` is the number of model ids of the route, and `models_body.target_present` says whether the model of this endpoint is one of them.
-- `deltas_usage` is the number of chunks that carry the `usage` block, and `has_usage` says whether that block arrived. The token counts come from the block: a count of chunks is not a count of tokens.
 - `concurrent_summary.aggregate_tok_per_s` is the number of tokens of all requests divided by the wall clock time.
 
 ## Layout of the repository
@@ -154,7 +153,6 @@ results/README.md         the index of the campaigns and the format of a result 
 
 ## Pitfalls
 
-- A line of SSE is not a token. The gateway sends empty deltas, reasoning deltas, and groups of several tokens in one delta. A line count gives a wrong token count. Read the `usage` block of the response instead.
 - Without streaming, the TTFB and the total time are the same value, because the body arrives in one piece. A rate that you compute from a non-streaming answer is not correct.
 - The value `thinking: {"type": "disabled"}` does not stop the reasoning on these routes. The parameter `reasoning_effort` showed no effect. Do not expect a lower delay from these parameters. Run the phase `thinking` to measure this in your own window: it sends one long answer under each control. One sample proves nothing, because the number of reasoning tokens of a long answer changes between requests in any case.
 - OpenCode (Go) requires the header `x-opencode-session`. Without the header, the answer is `400 MissingSessionID`. Send a browser user agent as well, because `urllib` of Python receives `403`.

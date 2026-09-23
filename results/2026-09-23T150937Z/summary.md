@@ -4,9 +4,9 @@ Date: 2026-09-23 (CEST). Machine: macOS 26.6.2. Client: `curl` with a browser us
 
 Both routes serve the same model. CommandCode names it `deepseek/deepseek-v4.1-flash`. OpenCode names it `deepseek-v4.1-flash`.
 
-- CommandCode: 18 clean requests in the A/B test, plus 55 requests in the first characterization session.
+- CommandCode: 18 clean requests in the A/B test, plus 47 requests in the first characterization session.
 - OpenCode (Go): 18 clean requests in the A/B test, plus 4 parallel requests.
-- The tool reads each token count from the `usage` block of the response. It never counts SSE lines.
+- The tool reads each token count from the `usage` block of the response.
 
 ## Comparison of the two routes
 
@@ -69,7 +69,7 @@ The findings below apply to both endpoints.
 
 | File | Generated (UTC) | Content |
 |---|---|---|
-| `commandcode_20260923.json` | 2026-09-23, time not recorded | The full characterization of CommandCode, with 55 records: transport, short answer, medium answer, streaming, prefill, 1 and 4 parallel requests, and the thinking toggle. |
+| `commandcode_20260923.json` | 2026-09-23, time not recorded | The full characterization of CommandCode, with 47 records: transport, short answer, medium answer, streaming, prefill, 1 and 4 parallel requests, and the thinking toggle. |
 | `ab_commandcode_20260923.json` | 2026-09-23, time not recorded | The A/B test, CommandCode side, with 18 records. |
 | `ab_opencode-go_20260923.json` | 2026-09-23, time not recorded | The A/B test, OpenCode (Go) side, with 18 records. |
 | `commandcode_20260923T150937Z.json` | 2026-09-23T15:09:37Z | The output of `bench.py run` over transport, short, long, prefill and concurrent, with 19 records in the `{meta, records}` format. It is the only file of this session with a `meta` block, and the only source of the row of the reused connection. |

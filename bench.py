@@ -15,8 +15,7 @@ Phases (all timed with curl + a browser UA, so no SDK retry logic hides the tail
               route honour any of them, or does the model always reason first?
   concurrent  N parallel long requests      -> per-request and aggregate throughput
 
-Token counts always come from the response `usage` block -- never from counting SSE
-lines (reasoning deltas, empty deltas and merged chunks make line counts lie).
+Token counts come from the response `usage` block.
 
 Examples
 --------
@@ -246,7 +245,7 @@ def stream(ep: dict, prompt: str, max_tokens: int, extra: dict | None = None) ->
     proc.stdin.write(payload)
     proc.stdin.close()
     first_any = first_reason = first_content = last = None
-    n_reason = n_content = n_empty = n_usage = n_unparseable = 0
+    n_unparseable = 0
     usage, errsample = {}, None
     for raw in proc.stdout:
         now = time.perf_counter() - t0
@@ -265,21 +264,18 @@ def stream(ep: dict, prompt: str, max_tokens: int, extra: dict | None = None) ->
             continue
         if chunk.get("usage"):
             usage = chunk["usage"]
-            n_usage += 1
         delta = ((chunk.get("choices") or [{}])[0].get("delta")) or {}
         if delta.get("reasoning") or delta.get("reasoning_content"):
             first_any = now if first_any is None else first_any
             first_reason = now if first_reason is None else first_reason
-            n_reason += 1
             last = now
         elif delta.get("content"):
             first_any = now if first_any is None else first_any
             first_content = now if first_content is None else first_content
-            n_content += 1
             last = now
-        else:
-            n_empty += 1
     proc.wait()
+    if n_unparseable and errsample is None:
+        errsample = "%d lines of the stream did not parse as JSON" % n_unparseable
     end = time.perf_counter() - t0
     out_tok = usage.get("completion_tokens")
     reason_tok = (usage.get("completion_tokens_details") or {}).get("reasoning_tokens")
@@ -296,8 +292,6 @@ def stream(ep: dict, prompt: str, max_tokens: int, extra: dict | None = None) ->
         "out_tokens": out_tok,
         "reasoning_tokens": reason_tok,
         "content_tokens": content_tok,
-        "deltas_reasoning": n_reason, "deltas_content": n_content, "deltas_empty": n_empty,
-        "deltas_usage": n_usage, "deltas_unparseable": n_unparseable, "has_usage": bool(usage),
         "tok_per_s_total": round(out_tok / gen, 1) if (out_tok and gen) else None,
         "tok_per_s_visible": round(content_tok / vis, 1) if (content_tok and vis) else None,
         "error": errsample,
