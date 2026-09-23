@@ -4,7 +4,7 @@ This repository measures three properties of an OpenAI-compatible model endpoint
 
 The tool is `bench.py`. It sends each request with `curl`, so no client library retry hides the slow end of the distribution. It reads the token counts from the `usage` block of the response. It does not count server-sent event (SSE) lines, because empty deltas and reasoning deltas make a line count wrong.
 
-The directory `results/` holds the measurements of 2026-09-23. On that date, one model (`deepseek-v4.1-flash`) ran on two providers: CommandCode and OpenCode (Go). The file `results/summary.md` holds the tables and the findings of the first campaign (macOS). The file `results/summary_windows_20260923.md` holds the same test again on Windows 11.
+The directory `results/` holds one directory for each campaign, and each of them holds a `summary.md` and its raw records. `results/README.md` is the index of the campaigns. The campaign of the first session ran on macOS; the second campaign repeated the same test on Windows 11.
 
 ## Results
 
@@ -31,7 +31,7 @@ OpenCode (Go) has one extra requirement. The header `x-opencode-session` is mand
 
 ## Results of the second campaign (Windows 11)
 
-The same A/B test ran again on a Windows 11 host through another network path. The absolute values differ, but the ratios agree with the first campaign. The full tables are in `results/summary_windows_20260923.md`.
+The same A/B test ran again on a Windows 11 host through another network path. The absolute values differ, but the ratios agree with the first campaign. The full tables are in `results/2026-09-23-windows/summary.md`.
 
 | Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
 |---|---|---|---|
@@ -65,17 +65,18 @@ Run `python3 bench.py list` to print this table from the code.
 5. Run `python3 bench.py run --endpoint commandcode --phases concurrent --concurrent 4`. The command measures 4 requests in parallel.
 6. Run `python3 bench.py run --endpoint commandcode --phases thinking`. The command sends one long answer under each reasoning control, so it shows whether the route honours them.
 7. Run `python3 bench.py ab --a commandcode --b opencode-go`. The command alternates the two endpoints, so the load of the provider hits both sides in the same way.
-8. Run `python3 bench.py report results/ab_opencode-go_20260923.json`. The command prints the median, the minimum, and the maximum of each measurement.
-9. Run `python3 bench.py compare results/commandcode_<UTC>.json results/opencode-go_<UTC>.json`. The command prints one markdown table that holds the median of each metric of the two files, the quotient and the name of the faster endpoint. Paste the table into a summary.
+8. Run `python3 bench.py report results/2026-09-23-macos/ab_opencode-go.json`. The command prints the median, the minimum, and the maximum of each measurement.
+9. Run `python3 bench.py compare results/2026-09-23-windows/ab_commandcode.json results/2026-09-23-windows/ab_opencode-go.json`. The command prints one markdown table that holds the median of each metric of the two files, the quotient and the name of the faster endpoint. Paste the table into a summary.
 
 The command of the full campaign, as it ran for the summaries in `results/`:
 
 ```bash
 python3 bench.py ab --a commandcode --b opencode-go \
-  --phases transport,short,long,prefill,concurrent --n 4 --concurrent 4
+  --phases transport,short,long,prefill,thinking,concurrent --n 4 --concurrent 4 \
+  --out-dir results/2026-09-23-windows
 ```
 
-Each run writes one file in `results/`. The name of the file holds the endpoint and the time in UTC. The file holds a `meta` block and the raw records.
+Each run writes one file in `results/`, or in the directory of the option `--out-dir`. The name of the file holds the endpoint and the time in UTC. The file holds a `meta` block and the raw records. Give the records of one session one directory, as the campaigns in `results/` do: `results/README.md` is the index of the campaigns and states the format of a file.
 
 ## How to measure another endpoint
 
@@ -145,8 +146,9 @@ Hermes Agent has a provider profile for each endpoint. Set `model.provider` to `
 ## Layout of the repository
 
 ```
-bench.py     the runner: the phases, the A/B runner, the report and the comparison.
-results/     the measurements of 2026-09-23 and the summary tables of both campaigns.
+bench.py                  the runner: the phases, the A/B runner, the report, the comparison.
+results/                  one directory for each campaign, with its summary and its records.
+results/README.md         the index of the campaigns and the format of a result file.
 ```
 
 `bench.py` is the only source file. The first version of each tool is in the history of the repository (`git log --oneline`). Every measurement that survived is a phase of `bench.py`, and the aggregations of the first session are the commands `report` and `compare`.

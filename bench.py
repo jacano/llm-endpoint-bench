@@ -24,8 +24,13 @@ Examples
     python bench.py run --endpoint commandcode
     python bench.py run --endpoint opencode-go --phases short,long
     python bench.py ab --a commandcode --b opencode-go          # interleaved A/B
-    python bench.py report results/commandcode_20260923T1520Z.json
-    python bench.py compare results/commandcode_<UTC>.json results/opencode-go_<UTC>.json
+    python bench.py report results/2026-09-23-macos/ab_opencode-go.json
+    python bench.py compare results/2026-09-23-windows/ab_commandcode.json \
+        results/2026-09-23-windows/ab_opencode-go.json
+
+A result file lands in results/ by default. Give --out-dir to collect the files of one
+campaign in one directory, as in results/2026-09-23-windows/. See results/README.md for
+the layout of that directory and for the format of a result file.
 
 Any other OpenAI-compatible endpoint:
     python bench.py run --base-url https://api.example.com/v1 --model vendor/model \
@@ -356,11 +361,12 @@ def summarize(r: dict) -> str:
                r.get("out_tokens"), r.get("reasoning_tokens"), r.get("tok_per_s_total")))
 
 
-def write_results(recs: list[dict], ep: dict, phases: list[str]) -> str:
-    os.makedirs(RESULTS, exist_ok=True)
+def write_results(recs: list[dict], ep: dict, phases: list[str], out_dir: str | None = None) -> str:
+    out_dir = out_dir or RESULTS
+    os.makedirs(out_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     tag = "".join(c if c.isalnum() or c in "-_." else "_" for c in ep["name"])
-    path = os.path.join(RESULTS, "%s_%s.json" % (tag, stamp))
+    path = os.path.join(out_dir, "%s_%s.json" % (tag, stamp))
     payload = {"meta": {"endpoint": ep["name"], "base_url": ep["base_url"], "model": ep["model"],
                         "phases": phases, "started_utc": stamp, "host": platform.node(),
                         "platform": platform.platform(), "python": platform.python_version(),
@@ -529,7 +535,7 @@ def cmd_ab(args) -> None:
                     print("  %-14s %-10s [%d] %s" % (ep["name"], phase, i + 1, summarize(r)), flush=True)
                 out[ep["name"]] += rows
     for ep in (a, b):
-        path = write_results(out[ep["name"]], ep, phases)
+        path = write_results(out[ep["name"]], ep, phases, args.out_dir)
         print("wrote", path)
 
 
@@ -543,7 +549,7 @@ def cmd_run(args) -> None:
     phases = args.phases.split(",")
     print("endpoint=%s model=%s phases=%s" % (ep["name"], ep["model"], phases))
     recs = run_phases(ep, phases, args.concurrent)
-    path = write_results(recs, ep, phases)
+    path = write_results(recs, ep, phases, args.out_dir)
     print("wrote", path)
     report(path)
 
@@ -566,6 +572,7 @@ def main() -> None:
     r.add_argument("--phases", default="transport,short,long,prefill",
                    help="csv of: %s" % ",".join(PHASES))
     r.add_argument("--concurrent", type=int, default=4, help="parallel requests for `concurrent`")
+    r.add_argument("--out-dir", help="directory of the result file (default: results/)")
     r.set_defaults(func=cmd_run)
 
     a = sub.add_parser("ab", help="interleaved A/B between two endpoints")
@@ -574,6 +581,7 @@ def main() -> None:
     a.add_argument("--phases", default="transport,short,long")
     a.add_argument("--n", type=int, default=4, help="rounds for short/long")
     a.add_argument("--concurrent", type=int, default=4)
+    a.add_argument("--out-dir", help="directory of the result files (default: results/)")
     a.set_defaults(func=cmd_ab)
 
     p = sub.add_parser("report", help="aggregate a results file")

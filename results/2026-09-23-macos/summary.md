@@ -63,12 +63,14 @@ The findings below apply to both endpoints.
 - The campaign did not test retries, tool calls, or streaming with tools. A gateway can behave in another way in those cases.
 - The value `tok_per_s_visible` has no meaning for an answer of 3 tokens, because the result is a large number. Read it for long answers only.
 
-## Raw data in `results/`
+## Raw data in this directory
 
 | File | Content |
 |---|---|
-| `commandcode_single_20260923.json` | The full characterization of CommandCode, with 55 records: transport, short answer, medium answer, streaming, prefill, 1 and 4 parallel requests, and the thinking toggle. |
-| `ab_commandcode_20260923.json` | The A/B test, CommandCode side, with 18 records. |
-| `ab_opencode-go_20260923.json` | The A/B test, OpenCode (Go) side, with 18 records. |
-| `bench_py_example_commandcode_20260923.json` | An example of the output of `bench.py run`, with 19 records in the `{meta, records}` format. |
+| `commandcode_single.json` | The full characterization of CommandCode, with 55 records: transport, short answer, medium answer, streaming, prefill, 1 and 4 parallel requests, and the thinking toggle. |
+| `ab_commandcode.json` | The A/B test, CommandCode side, with 18 records. |
+| `ab_opencode-go.json` | The A/B test, OpenCode (Go) side, with 18 records. |
+| `bench_py_example_commandcode.json` | An example of the output of `bench.py run`, with 19 records in the `{meta, records}` format. |
 | `<endpoint>_<UTC>.json` | The output of `bench.py run`, in the `{meta, records}` format. |
+
+The campaign of Windows 11 is in the directory `../2026-09-23-windows/`.

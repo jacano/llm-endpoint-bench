@@ -96,10 +96,12 @@ The TPS of the sustained decoding is again about 1.6 times lower on OpenCode
   value. Read this value for long answers only.
 - The campaign did not test retries, tool calls, or streaming with tools.
 
-## Raw data in `results/`
+## Raw data in this directory
 
 | File | Content |
 |---|---|
-| `commandcode_20260923T153444Z.json` | The Windows A/B test, CommandCode side, with 48 records in the `{meta, records}` format. |
-| `opencode-go_20260923T153444Z.json` | The Windows A/B test, OpenCode (Go) side, with 48 records in the `{meta, records}` format. |
-| `summary.md` | The summary of the first campaign (macOS), with the full characterization. |
+| `ab_commandcode.json` | The Windows A/B test, CommandCode side, with 48 records in the `{meta, records}` format. |
+| `ab_opencode-go.json` | The Windows A/B test, OpenCode (Go) side, with 48 records in the `{meta, records}` format. |
+
+The campaign of macOS is in the directory `../2026-09-23-macos/`. Its `summary.md` holds the
+full characterization of the model.
