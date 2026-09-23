@@ -2,9 +2,8 @@
 
 `bench.py` measures one OpenAI-compatible model endpoint against another: latency, throughput, and
 tokens per second. It sends each request with `curl`, so no client library hides the slow end of
-the distribution, and it reads the token counts from the `usage` block of the response. The tool
-uses the standard library of Python only, and it runs on Linux, macOS and Windows (on Windows use
-`python` in place of `python3`, and run the commands from Git Bash).
+the distribution, and it reads the token counts from the `usage` block of the response. It uses
+the standard library of Python only.
 
 ## Results
 
@@ -18,10 +17,10 @@ the raw records are in `results/`, and `results/README.md` indexes them.
 
 ## Requirements
 
-A key of each endpoint, in the environment or in a `.env` file in the directory of the tool (which
-is already in `.gitignore`). A machine where the Hermes Agent desktop app holds the keys is read
-too, from the profile of that app: that is the only tie between the two programs. The tool prints
-the name of a key variable only, never its value.
+`python` and `curl`, and a key of each endpoint, in the environment or in a `.env` file in the
+directory of the tool (which is already in `.gitignore`). A machine where the Hermes Agent desktop
+app holds the keys is read too, from the profile of that app: that is the only tie between the two
+programs. The tool prints the name of a key variable only, never its value.
 
 | Endpoint | Base URL | Key variable | Extra header |
 |---|---|---|---|

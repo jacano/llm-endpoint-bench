@@ -1,7 +1,7 @@
 # Results: deepseek-v4.1-flash on CommandCode and on OpenCode (Go), Windows 11
 
-Date: 2026-09-23 (CEST). Machine: Windows 11, Python 3.11.16. Client: `curl` 8.12.1 with a
-browser user agent. The two sides ran in the same session, in an interleaved A/B order.
+Date: 2026-09-23 (CEST). Machine: Windows 11. Client: `curl` with a browser user agent. The two
+sides ran in the same session, in an interleaved A/B order.
 
 Both routes serve the same model. CommandCode names it `deepseek/deepseek-v4.1-flash`.
 OpenCode names it `deepseek-v4.1-flash`.

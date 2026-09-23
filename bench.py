@@ -49,7 +49,7 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(HERE, "results")
-#: curl is a native program: on Windows it reads `NUL`, not the MSYS mount `/dev/null`.
+#: curl is a native program: it reads the null device of the system, not the mount `/dev/null`.
 NULL = "NUL" if os.name == "nt" else "/dev/null"
 #: Where a key may live, after the environment. The first file that defines a key wins; names
 #: only are ever printed. A `.env` beside the tool carries the key of whatever endpoint you use,
@@ -344,7 +344,6 @@ def write_results(recs: list[dict], ep: dict, phases: list[str], out_dir: str | 
     path = os.path.join(out_dir, "%s_%s.json" % (tag, stamp))
     payload = {"meta": {"endpoint": ep["name"], "base_url": ep["base_url"], "model": ep["model"],
                         "phases": phases, "started_utc": stamp, "host": platform.node(),
-                        "platform": platform.platform(), "python": platform.python_version(),
                         "runner": "bench.py"},
                "records": recs}
     with open(path, "w") as fh:

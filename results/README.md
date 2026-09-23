@@ -6,16 +6,16 @@ that the summary cites.
 The time of a run matters, and it stays with the directory and with the file. A run writes its
 files into a directory that is named for the time of the run, as in `2026-09-23T161050Z`, so a
 second run of the same day cannot mix with the first one. The name holds the time and nothing
-else: the host and the operating system are in the table below, and in the `meta` block of
-every file. Inside the directory, a file names the time of the run in three places: the name of
+else: the host is in the table below, and in the `meta` block of every file. Inside the directory,
+a file names the time of the run in three places: the name of
 the file (`<endpoint>_<UTC>.json`, and `ab_<endpoint>_<UTC>.json` for a side of an A/B test),
 the field `meta.started_utc`, and the header that the commands `report` and `compare` print.
 
 | Directory | Host | Records | Finding |
 |---|---|---|---|
-| `2026-09-23T153444Z/` | Windows 11, Python 3.11.16 | 94 | CommandCode is faster than OpenCode (Go) on every measurement |
-| `2026-09-23T204204Z/` | Windows 11, Python 3.11.16 | 96 | The same conclusion in a second window of the same host, four hours later |
-| `2026-09-23T210256Z/` | Windows 11, Python 3.11.16 | 96 | The same conclusion in a third window of that host, twenty minutes later |
+| `2026-09-23T153444Z/` | Windows 11 | 94 | CommandCode is faster than OpenCode (Go) on every measurement |
+| `2026-09-23T204204Z/` | Windows 11 | 96 | The same conclusion in a second window of the same host, four hours later |
+| `2026-09-23T210256Z/` | Windows 11 | 96 | The same conclusion in a third window of that host, twenty minutes later |
 
 The three campaigns measured the same model, `deepseek-v4.1-flash`, on the two routes CommandCode
 and OpenCode (Go), on one host. Read the `summary.md` of a directory for the tables, the findings
@@ -69,15 +69,15 @@ A file that `bench.py` writes holds two blocks:
 ```json
 {"meta": {"endpoint": "commandcode", "model": "deepseek/deepseek-v4.1-flash",
           "phases": ["transport", "short", "long", "concurrent"],
-          "started_utc": "20260923T210256Z", "host": "DESKTOP-08PBEHO",
-          "platform": "Windows-10-...", "runner": "bench.py"},
+          "started_utc": "20260923T210256Z", "host": "DESKTOP-08PBEHO", "runner": "bench.py"},
  "records": [{"kind": "short", "iter": 1, "ttft_any_ms": 826.3, "out_tokens": 17, "...": "..."}]}
 ```
 
 The `meta` block names the time in UTC, the host, the endpoint, the model and the phases. The
 `records` block holds one object for each request, and the field `kind` names the phase that
 made it. A record does not repeat the time, because every record of a file belongs to the one
-run that the `meta` block names.
+run that the `meta` block names. A file written by an earlier version of the tool may hold more
+fields.
 
 ## How to read a directory
 

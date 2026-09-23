@@ -14,7 +14,7 @@ indexes:
 
 The tool that produced them is `bench.py`; the README states it.
 
-## The first window (Windows 11, 15:34Z)
+## The first window (15:34Z)
 
 CommandCode is faster than OpenCode (Go) on every measurement. The table gives the median value of
 each measurement: TTFB is the delay before the response starts, and TTFT the delay before the
@@ -36,7 +36,7 @@ model writes the first token. The full tables are in `results/2026-09-23T153444Z
 A ratio above 1 belongs to a delay; a ratio below 1 belongs to a rate, where a large number is
 better.
 
-## The second window (Windows 11, 20:42Z)
+## The second window (20:42Z)
 
 The same A/B test ran again on the same host, four hours later. Every difference points the same
 way; the size of a difference moves with the queue of the provider. The full tables are in
@@ -54,7 +54,7 @@ way; the size of a difference moves with the queue of the provider. The full tab
 | 4 parallel requests: rate of one request | 377.6 tokens/s | 239.7 tokens/s | 0.63 |
 | 4 parallel requests: total rate | 799.7 tokens/s | 478.8 tokens/s | 0.60 |
 
-## The third window (Windows 11, 21:02Z)
+## The third window (21:02Z)
 
 The same A/B test ran a third time on the same host, twenty minutes after the second window. Every
 difference points the same way, and the delays of the model itself stayed inside the range of the
@@ -77,7 +77,7 @@ windows before it. The full tables are in `results/2026-09-23T210256Z/summary.md
 The direction of every difference is the same in all three windows. The size of a difference moves
 with the queue of the provider, and two families of measurement move differently.
 
-| OpenCode divided by CommandCode | Windows, 15:34 | Windows, 20:42 | Windows, 21:02 |
+| OpenCode divided by CommandCode | 15:34 | 20:42 | 21:02 |
 |---|---|---|---|
 | TTFB of `/models`, reused connection | 11.77 | 9.11 | 20.58 |
 | Short answer: TTFT of the first token | 1.75 | 2.20 | 2.16 |
