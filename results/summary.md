@@ -1,81 +1,74 @@
-# Resultados — deepseek-v4.1-flash: CommandCode vs OpenCode (Go)
+# Results: deepseek-v4.1-flash on CommandCode and on OpenCode (Go)
 
-Fecha: 2026-09-23 (CEST) · máquina: macOS 26.6.2 · cliente: `curl` con UA de navegador,
-desde la misma sesión y en ventanas de tiempo solapadas (A/B intercalado).
-Modelo idéntico en ambos: `deepseek/deepseek-v4.1-flash` (CommandCode) / `deepseek-v4.1-flash` (OpenCode).
+Date: 2026-09-23 (CEST). Machine: macOS 26.6.2. Client: `curl` with a browser user agent. The two sides ran in the same session and in overlapping windows, in an interleaved A/B order.
 
-- Lado CommandCode: 18 peticiones limpias (A/B) + 55 en la sesión de caracterización inicial.
-- Lado OpenCode Go: 18 peticiones limpias (A/B) + 4 concurrentes.
-- Tokens contados siempre desde el bloque `usage` de la respuesta, nunca contando líneas SSE.
+Both routes serve the same model. CommandCode names it `deepseek/deepseek-v4.1-flash`. OpenCode names it `deepseek-v4.1-flash`.
 
-## Tabla comparativa (medianas, A/B intercalado)
+- CommandCode: 18 clean requests in the A/B test, plus 55 requests in the first characterization session.
+- OpenCode (Go): 18 clean requests in the A/B test, plus 4 parallel requests.
+- The tool reads each token count from the `usage` block of the response. It never counts SSE lines.
 
-| Métrica | CommandCode | OpenCode (Go) | OpenCode vs CC |
+## Comparison of the two routes
+
+The A/B test alternated the two endpoints. The table gives the median value of each measurement.
+
+| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
 |---|---|---|---|
-| TLS (conexión nueva) | 24 ms | 200 ms | 8,4x |
-| TTFB `/models`, conexión nueva | 47 ms | 460 ms | 9,7x |
-| TTFB con conexión reutilizada | **20 ms** | **265 ms** | 13x |
-| Respuesta corta: TTFT 1er token | 912 ms | 1561 ms | 1,71x |
-| Respuesta corta: TTFT token visible / total | 1044 / 1046 ms | 1785 / 1792 ms | 1,71x |
-| Gen. larga (~620 tok): TTFT 1er token | 884 ms | 2052 ms | 2,32x |
-| Gen. larga: TTFT token visible | 1511 ms | 3033 ms | 2,01x |
-| Gen. larga: total | **2673 ms** | **4948 ms** | 1,85x (+85 %) |
-| TPS decodificación sostenida | **360 tok/s** (343–364) | **230 tok/s** (199–269) | 1,56x |
-| TPS en fase de contenido visible | **439 tok/s** | **260 tok/s** | 1,69x |
-| Prefill 18k tokens de entrada: TTFT | 1671 ms | 3774 ms | 2,26x |
-| Concurrencia 4: por petición | 378 tok/s (373–385) | 233 tok/s (215–259) | 1,63x |
-| Concurrencia 4: agregado | **947 tok/s · 1,66 req/s** | **476 tok/s · 0,81 req/s** | 2,0x |
+| TLS handshake, new connection | 24 ms | 200 ms | 8.4 times |
+| TTFB of `/models`, new connection | 47 ms | 460 ms | 9.7 times |
+| TTFB of `/models`, reused connection | 20 ms | 265 ms | 13 times |
+| Short answer: TTFT of the first token | 912 ms | 1561 ms | 1.71 times |
+| Short answer: TTFT of the visible token, and total time | 1044 ms and 1046 ms | 1785 ms and 1792 ms | 1.71 times |
+| Long answer of 620 tokens: TTFT of the first token | 884 ms | 2052 ms | 2.32 times |
+| Long answer of 620 tokens: TTFT of the visible token | 1511 ms | 3033 ms | 2.01 times |
+| Long answer of 620 tokens: total time | 2673 ms | 4948 ms | 1.85 times |
+| TPS of the sustained decoding | 360 tokens/s (343 to 364) | 230 tokens/s (199 to 269) | 1.56 times |
+| TPS of the visible content | 439 tokens/s | 260 tokens/s | 1.69 times |
+| TTFT with 18000 input tokens | 1671 ms | 3774 ms | 2.26 times |
+| 4 parallel requests: rate of one request | 378 tokens/s (373 to 385) | 233 tokens/s (215 to 259) | 1.63 times |
+| 4 parallel requests: total rate | 947 tokens/s and 1.66 requests/s | 476 tokens/s and 0.81 requests/s | 2.0 times |
 
-## De dónde sale la diferencia
+## Cause of the difference
 
-- **~245 ms por petición son overhead fijo del gateway de OpenCode**, no de la red ni del modelo:
-  con el socket ya establecido (tres peticiones dentro de una sola invocación de `curl`), `/models`
-  tarda 265 ms en OpenCode frente a 20 ms en CommandCode. En el TTFT de respuesta corta ese overhead
-  explica el 38 % del hueco (249 ms de 649 ms).
-- El resto (~400 ms de TTFT y la diferencia de régimen) es cola/arranque del modelo: OpenCode
-  sirve el mismo modelo ~1,6x más lento en decodificación sostenida.
-- El volumen de trabajo es comparable (619 vs 650 tok de salida; 120 vs 150 de razonamiento), así
-  que la comparación es limpia: la misma respuesta tarda 2,7 s en CommandCode y 4,9 s en OpenCode.
-- La varianza de cola es mayor en OpenCode: TTFT 1511–2580 ms frente a 800–1027 ms en CommandCode.
+The gateway of OpenCode adds a fixed overhead of about 245 ms to each request, and the network does not cause it. With a ready socket, which three requests inside one `curl` command give, `/models` needs 265 ms on OpenCode and 20 ms on CommandCode. That overhead is 38 percent of the gap in the TTFT of a short answer, or 249 ms of 649 ms.
 
-## Concurrencia
+The rest of the gap comes from the queue and the start of the model. OpenCode serves the same model about 1.6 times slower in the sustained decoding.
 
-| Endpoint | petición individual | 4 en paralelo (agregado) | req/s |
+The amount of work is comparable on both sides. The answers hold 619 tokens on one side and 650 on the other, with 120 and 150 reasoning tokens. The same answer needs 2.7 seconds on CommandCode and 4.9 seconds on OpenCode.
+
+The queue varies more on OpenCode. The TTFT ran from 1511 ms to 2580 ms on OpenCode, and from 800 ms to 1027 ms on CommandCode.
+
+## Parallel requests
+
+| Endpoint | One request | 4 parallel requests, total | Requests each second |
 |---|---|---|---|
-| CommandCode | 346 tok/s · 0,23 req/s | 947 tok/s | 1,66 |
-| OpenCode (Go) | — | 476 tok/s | 0,81 |
+| CommandCode | 346 tokens/s and 0.23 requests/s | 947 tokens/s | 1.66 |
+| OpenCode (Go) | not measured | 476 tokens/s | 0.81 |
 
-Ninguno de los dos degrada el tok/s por petición al pasar de 1 a 4 concurrentes (CommandCode
-378 vs 346, OpenCode 233 frente a su régimen individual), es decir el cuello de botella aguanta
-al menos 4 en paralelo.
+With 4 parallel requests, both endpoints keep the rate of one request. CommandCode gave 378 tokens/s against 346 tokens/s for a single request. OpenCode gave 233 tokens/s against a single-request rate of 230 tokens/s. The bottleneck holds at least 4 parallel requests.
 
-## Hallazgos del modelo (válidos para ambos endpoints)
+## Findings about the model
 
-- **El razonamiento está siempre activo**: incluso `"Reply with exactly: pong"` gasta 10–14 tokens de
-  razonamiento antes de responder. En generación larga: 47–668 tokens de razonamiento antes del
-  contenido (mediana ~380 en la sesión de caracterización, ~43 % de la salida).
-- `thinking: {"type": "disabled"}` **no** desactiva el razonamiento y `reasoning_effort` (low/high)
-  no produjo diferencia sistemática: el gateway parece ignorar ambos en esta ruta.
-- **Prefill es barato**: en la sesión de caracterización, pasar de 637 a 18 037 tokens de entrada movió
-  el TTFT 71 ms (944 → 1015 ms, dentro del ruido). El TTFT es cola + arranque de razonamiento.
-  (En la sesión A/B posterior el TTFT con 18k de entrada sí subió, hasta 1671/3774 ms: la cola del
-  proveedor domina y varía entre ventanas.)
+The findings below apply to both endpoints.
 
-## Salvedades
+- The model always reasons first. Even the prompt `Reply with exactly: pong` spends 10 to 14 reasoning tokens before the answer. A long answer spends 47 to 668 reasoning tokens before the content, with a median of about 380, or about 43 percent of the output.
+- The value `thinking: {"type": "disabled"}` does not stop the reasoning. The parameter `reasoning_effort` with the values `low` and `high` showed no difference. The gateway appears to ignore both parameters on these routes.
+- The prefill is cheap. In the first session, an input of 637 tokens gave a TTFT of 944 ms. An input of 18037 tokens gave 1015 ms, a difference of 71 ms inside the noise. The TTFT is the queue and the start of the reasoning.
+- In the later A/B session, a large input did add delay. The TTFT with 18000 input tokens was 1671 ms on CommandCode and 3774 ms on OpenCode. The queue of the provider dominates and changes between windows.
 
-- n pequeño por escenario (1–6) y ventana corta (~10 min por sesión): los ratios ±10 % son ruido.
-- La tasa depende del tipo de salida (aquí listas de números); prosa o código pueden diferir.
-- No se probaron reintentos, tool-calling ni streaming con herramientas, donde un gateway puede
-  comportarse de otra forma.
-- El TPS "visible" no tiene sentido para respuestas de 3 tokens (sale un número absurdo): úsalo solo
-  en generaciones largas.
+## Limits
 
-## Datos crudos en `results/`
+- Each measurement has 1 to 6 samples in a short window of about 10 minutes, so a difference below 10 percent is noise.
+- The rate depends on the type of output. The prompts asked for a list of numbers. Prose and code can give other rates.
+- The campaign did not test retries, tool calls, or streaming with tools. A gateway can behave in another way in those cases.
+- The value `tok_per_s_visible` has no meaning for an answer of 3 tokens, because the result is a large number. Read it for long answers only.
 
-| Fichero | Contenido |
+## Raw data in `results/`
+
+| File | Content |
 |---|---|
-| `commandcode_single_20260923.json` | sesión de caracterización completa contra CommandCode (55 registros: transporte, corta, media, streaming, prefill, concurrencia 1 y 4, thinking on/off) |
-| `ab_commandcode_20260923.json` | A/B intercalado, lado CommandCode (18 registros) |
-| `ab_opencode-go_20260923.json` | A/B intercalado, lado OpenCode Go (18 registros) |
-| `bench_py_example_commandcode_20260923.json` | salida de ejemplo de `bench.py run` (19 registros, formato `{meta, records}`) |
-| `<endpoint>_<UTC>.json` | salida de `bench.py run` (formato `{meta, records}`) |
+| `commandcode_single_20260923.json` | The full characterization of CommandCode, with 55 records: transport, short answer, medium answer, streaming, prefill, 1 and 4 parallel requests, and the thinking toggle. |
+| `ab_commandcode_20260923.json` | The A/B test, CommandCode side, with 18 records. |
+| `ab_opencode-go_20260923.json` | The A/B test, OpenCode (Go) side, with 18 records. |
+| `bench_py_example_commandcode_20260923.json` | An example of the output of `bench.py run`, with 19 records in the `{meta, records}` format. |
+| `<endpoint>_<UTC>.json` | The output of `bench.py run`, in the `{meta, records}` format. |

@@ -1,80 +1,65 @@
 # llm-endpoint-bench
 
-Banco de pruebas de **latencia, throughput y TPS** para endpoints de LLM compatibles con OpenAI,
-medido con `curl` (sin SDK, sin reintentos que escondan la cola) y con los tokens contados siempre
-desde el bloque `usage` de la respuesta — nunca contando líneas SSE.
+This repository measures three properties of an OpenAI-compatible model endpoint: latency, throughput, and tokens per second (TPS).
 
-Incluye los resultados medidos el **2026-09-23** comparando el mismo modelo
-(`deepseek-v4.1-flash`) servido por **CommandCode** y por **OpenCode (Go)**:
-resumen en [`results/summary.md`](results/summary.md).
+The tool is `bench.py`. It sends each request with `curl`, so no client library retry hides the slow end of the distribution. It reads the token counts from the `usage` block of the response. It does not count server-sent event (SSE) lines, because empty deltas and reasoning deltas make a line count wrong.
 
----
+The directory `results/` holds the measurements of 2026-09-23. On that date, one model (`deepseek-v4.1-flash`) ran on two providers: CommandCode and OpenCode (Go). The file `results/summary.md` holds the tables and the findings.
 
-## Resultados (resumen)
+## Results
 
-| Métrica | CommandCode | OpenCode (Go) | OpenCode vs CC |
+CommandCode is faster than OpenCode (Go) on every measurement. The table gives the median value of each measurement. TTFB (time to the first byte) is the delay before the response starts. TTFT (time to the first token) is the delay before the model writes the first token.
+
+| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
 |---|---|---|---|
-| TTFB `/models` (conexión nueva) | 47 ms | 460 ms | 9,7x |
-| TTFB **conexión reutilizada** (overhead por petición) | **20 ms** | **265 ms** | 13x |
-| Respuesta corta: TTFT 1er token / total | 912 / 1046 ms | 1561 / 1792 ms | 1,71x |
-| Gen. larga (~620 tok): TTFT visible / total | 1511 / **2673 ms** | 3033 / **4948 ms** | 1,85x |
-| **TPS decodificación sostenida** | **360 tok/s** | **230 tok/s** | 1,56x |
-| TPS en contenido visible | 439 tok/s | 260 tok/s | 1,69x |
-| Prefill 18k tok: TTFT | 1671 ms | 3774 ms | 2,26x |
-| 4 concurrentes: agregado | **947 tok/s** · 1,66 req/s | **476 tok/s** · 0,81 req/s | 2,0x |
+| TTFB of `/models`, new connection | 47 ms | 460 ms | 9.7 times |
+| TTFB of `/models`, reused connection | 20 ms | 265 ms | 13 times |
+| Short answer: TTFT of the first token | 912 ms | 1561 ms | 1.71 times |
+| Short answer: total time | 1046 ms | 1792 ms | 1.71 times |
+| Long answer of 620 tokens: TTFT of the first visible token | 1511 ms | 3033 ms | 2.01 times |
+| Long answer of 620 tokens: total time | 2673 ms | 4948 ms | 1.85 times |
+| TPS of the sustained decoding | 360 tokens/s | 230 tokens/s | 1.56 times |
+| TPS of the visible content | 439 tokens/s | 260 tokens/s | 1.69 times |
+| TTFT with 18000 input tokens | 1671 ms | 3774 ms | 2.26 times |
+| 4 parallel requests: rate of one request | 378 tokens/s | 233 tokens/s | 1.63 times |
+| 4 parallel requests: total rate | 947 tokens/s | 476 tokens/s | 2.0 times |
+| 4 parallel requests: requests each second | 1.66 | 0.81 | 2.0 times |
 
-Conclusión: mismo modelo, infraestructura distinta. CommandCode gana en todo lo medible —
-~13x menos overhead por petición, 1,6x más tok/s de decodificación y 2x en agregado concurrente.
-OpenCode (Go) añade dos fricciones operativas: la cabecera `x-opencode-session` es obligatoria
-(sin ella `400 MissingSessionID`) y su ruta PAYG `/zen/v1` responde `402 Insufficient account funds`
-con una clave de suscripción Go.
+Both routes serve the same model, so the infrastructure makes the difference. The gateway of OpenCode adds about 245 ms to each request with a ready socket, which is about 13 times the cost of CommandCode. OpenCode also decodes 1.6 times slower in the steady state.
 
----
+OpenCode (Go) has two extra requirements. The header `x-opencode-session` is mandatory. Without the header, the endpoint answers `400 MissingSessionID`. The route for pay-as-you-go use, `/zen/v1`, answers `402 Insufficient account funds` for a subscription key.
 
-## Requisitos
+## Requirements
 
-- `python3` (solo stdlib) y `curl`.
-- Claves de API. El script las busca primero en el entorno y, si no, en `~/.hermes/.env`
-  (solo se imprimen **nombres** de variable, nunca valores).
+You need `python3` and `curl`. The tool uses the standard library of Python only.
 
-| Endpoint (`--endpoint`) | Base URL | Variable de clave | Cabecera extra |
+The tool reads a key from the environment first. If the variable is absent, the tool reads the key from the file `~/.hermes/.env`. The tool prints the name of a variable only, never the value.
+
+| Endpoint name | Base URL | Variable of the key | Extra header |
 |---|---|---|---|
-| `commandcode` | `https://api.commandcode.ai/provider/v1` | `COMMANDCODE_API_KEY` | — |
-| `opencode-go` | `https://opencode.ai/zen/go/v1` | `OPENCODE_GO_API_KEY` | `x-opencode-session` (obligatoria) |
-| `opencode-zen` | `https://opencode.ai/zen/v1` | `OPENCODE_ZEN_API_KEY` | — |
+| `commandcode` | `https://api.commandcode.ai/provider/v1` | `COMMANDCODE_API_KEY` | none |
+| `opencode-go` | `https://opencode.ai/zen/go/v1` | `OPENCODE_GO_API_KEY` | `x-opencode-session` |
+| `opencode-zen` | `https://opencode.ai/zen/v1` | `OPENCODE_ZEN_API_KEY` | none |
 
-`python bench.py list` muestra esta tabla desde el propio código.
+Run `python3 bench.py list` to print this table from the code.
 
-## Cómo invocarlo
+## How to run the tool
 
-```bash
-git clone <este repo> && cd llm-endpoint-bench
+1. Clone the repository and go to its directory.
+2. Run `python3 bench.py list`. The command shows each known endpoint and the name of its key variable.
+3. Run `python3 bench.py run --endpoint commandcode`. The command measures the transport, a short answer, a long answer, and a large input.
+4. Run `python3 bench.py run --endpoint opencode-go`. The runner adds the session header for this endpoint.
+5. Run `python3 bench.py run --endpoint commandcode --phases concurrent --concurrent 4`. The command measures 4 requests in parallel.
+6. Run `python3 bench.py ab --a commandcode --b opencode-go`. The command alternates the two endpoints, so the load of the provider hits both sides in the same way.
+7. Run `python3 bench.py report results/ab_opencode-go_20260923.json`. The command prints the median, the minimum, and the maximum of each measurement.
 
-# 1) qué endpoints conoce
-python3 bench.py list
+Each run writes one file in `results/`. The name of the file holds the endpoint and the time in UTC. The file holds a `meta` block and the raw records.
 
-# 2) benchmark completo de un endpoint (transporte + corta + larga + prefill)
-python3 bench.py run --endpoint commandcode
-python3 bench.py run --endpoint opencode-go            # añade la cabecera de sesión solo
+## How to measure another endpoint
 
-# 3) solo algunas fases
-python3 bench.py run --endpoint commandcode --phases transport,short
-python3 bench.py run --endpoint opencode-go --phases short,long
-
-# 4) medición concurrente (N peticiones en paralelo)
-python3 bench.py run --endpoint commandcode --phases concurrent --concurrent 4
-
-# 5) A/B intercalado: la carga del proveedor golpea a ambos lados por igual
-python3 bench.py ab --a commandcode --b opencode-go --phases transport,short,long --n 4
-
-# 6) agregar cualquier fichero de resultados (mediana, mínimo, máximo)
-python3 bench.py report results/ab_commandcode_20260923.json
-```
-
-Cada ejecución escribe `results/<endpoint>_<UTC>.json` con `{meta, records}` y, en `run`,
-imprime el agregado al terminar.
-
-### Endpoint propio (cualquier API compatible con OpenAI)
+1. Run the tool with the address, the name of the model, and the name of the key variable.
+2. If the gateway requires the header `x-opencode-session`, add `--session-header`.
+3. If you want a short name for the result file, add `--tag`.
 
 ```bash
 python3 bench.py run \
@@ -82,10 +67,11 @@ python3 bench.py run \
   --model vendor/model-id \
   --key-env EXAMPLE_API_KEY \
   --tag example
-# añade --session-header si el gateway exige x-opencode-session
 ```
 
-### Invocación mínima a mano (para comprobar una clave o un modelo)
+## Manual requests
+
+Use a manual request to make sure that a key and a name of a model are correct.
 
 CommandCode:
 
@@ -96,7 +82,7 @@ curl -sS https://api.commandcode.ai/provider/v1/chat/completions \
   -d '{"model":"deepseek/deepseek-v4.1-flash","messages":[{"role":"user","content":"hi"}],"stream":true}'
 ```
 
-OpenCode (Go) — sin la cabecera de sesión devuelve `400 MissingSessionID`:
+OpenCode (Go). Without the session header, the endpoint answers `400 MissingSessionID`.
 
 ```bash
 curl -sS https://opencode.ai/zen/go/v1/chat/completions \
@@ -106,89 +92,59 @@ curl -sS https://opencode.ai/zen/go/v1/chat/completions \
   -d '{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"hi"}],"stream":true}'
 ```
 
-Ojo con el id del modelo: **CommandCode usa el prefijo del proveedor** (`deepseek/deepseek-v4.1-flash`),
-OpenCode usa el id pelado (`deepseek-v4.1-flash`). Lista los modelos disponibles con
-`curl <base_url>/models` (`/models` en CommandCode es público).
+The identifier of the model is different on each route. CommandCode uses the prefix of the provider, as in `deepseek/deepseek-v4.1-flash`. OpenCode uses the plain identifier, as in `deepseek-v4.1-flash`. Run `curl <base_url>/models` to list the identifiers of a route. The route `/models` of CommandCode is public.
 
-### Usarlo desde Hermes Agent
+## Use with Hermes Agent
 
-Los tres endpoints ya tienen perfil de proveedor en Hermes; basta con la variable de entorno
-correspondiente y elegir el proveedor por nombre:
+Hermes Agent has a provider profile for each of the three endpoints. Set the variable of the key, then select the provider by name.
 
-- `model.provider: commandcode` + `COMMANDCODE_API_KEY`
-- `model.provider: opencode-go` (alias `go`) + `OPENCODE_GO_API_KEY`
-- `model.provider: opencode-zen` (alias `opencode`, `zen`) + `OPENCODE_ZEN_API_KEY`
+- `model.provider: commandcode` with `COMMANDCODE_API_KEY`
+- `model.provider: opencode-go` (alias `go`) with `OPENCODE_GO_API_KEY`
+- `model.provider: opencode-zen` (alias `opencode`, `zen`) with `OPENCODE_ZEN_API_KEY`
 
-## Qué mide cada fase
+## Phases of the tool
 
-| Fase | Peticiones | Para qué |
+| Phase | Requests | Purpose |
 |---|---|---|
-| `transport` | 3 nuevas + 3 reutilizando socket | separa handshake (DNS/TCP/TLS) del overhead por petición del gateway |
-| `short` | 5 streaming, `max_tokens=64` | latencia que nota el usuario en una respuesta corta |
-| `long` | 4 streaming, `max_tokens=1200` | TTFT desglosado + tok/s sostenido |
-| `prefill` | 1 streaming, ~18k tokens de entrada | ¿crece el TTFT con el prompt? |
-| `concurrent` | N en paralelo | tok/s agregado y req/s, y si degrada el tok/s por petición |
+| `transport` | 3 new connections and 3 requests with a reused socket | Separates the handshake from the overhead of the gateway |
+| `short` | 5 streaming requests with `max_tokens=64` | Measures the delay that a user feels on a short answer |
+| `long` | 4 streaming requests with `max_tokens=1200` | Measures the split of the TTFT and the sustained rate |
+| `prefill` | 1 streaming request with about 18000 input tokens | Shows whether a large input changes the TTFT |
+| `concurrent` | N parallel requests | Measures the total rate and the rate of one request |
 
-### Definiciones de las métricas
+## Definitions of the measurements
 
-- `ttft_any_ms` — primer delta de cualquier tipo (razonamiento **o** contenido).
-- `ttft_reasoning_ms` / `ttft_content_ms` — primer token de razonamiento / primer token **visible**.
-  La diferencia entre ambos es lo que el usuario percibe como "tarda en empezar a escribir".
-- `tok_per_s_total` — `completion_tokens / (último delta − primer delta)`: incluye razonamiento.
-- `tok_per_s_visible` — tokens de contenido / tiempo de la fase de contenido. Con respuestas de
-  2–3 tokens el número no tiene sentido (sale enorme): úsalo solo en generaciones largas.
-- `models_reuse.ttfb_ms` — TTFB con el socket ya abierto, es decir el coste fijo del gateway
-  por petición (sin handshake ni cola del modelo).
-- `concurrent_summary.aggregate_tok_per_s` — suma de tokens de todas las peticiones / wall clock.
+- `ttft_any_ms` is the delay before the first delta of any kind, reasoning or content.
+- `ttft_content_ms` is the delay before the first visible token. The difference between this value and `ttft_any_ms` is the delay that a user sees as a slow start.
+- `tok_per_s_total` is `completion_tokens` divided by the time between the first delta and the last delta. The value includes the reasoning tokens.
+- `tok_per_s_visible` is the number of content tokens divided by the time of the content phase. Do not read this value for an answer of 2 or 3 tokens, because the result is a large number without meaning.
+- `models_reuse.ttfb_ms` is the TTFB with a ready socket. The value is the fixed cost of the gateway for each request.
+- `concurrent_summary.aggregate_tok_per_s` is the number of tokens of all requests divided by the wall clock time.
 
-## Estructura
+## Layout of the repository
 
 ```
-bench.py                     # runner unificado (esto es lo que se usa normalmente)
-results/
-  summary.md                 # tablas y conclusiones de la campaña 2026-09-23
-  commandcode_single_20260923.json     # caracterización completa de CommandCode (55 registros)
-  ab_commandcode_20260923.json         # A/B lado CommandCode
-  ab_opencode-go_20260923.json         # A/B lado OpenCode Go
-scripts/                     # scripts originales de la sesión (tal cual se usaron)
-  probe_commandcode.py       # v1: fases models/tiny/medium/stream
-  probe_cc_v2.py             # streaming con `usage` parseado (TTFT desglosado)
-  probe_concurrent.py        # concurrencia N en paralelo
-  diag_commandcode.py        # ¿el SSE trae usage? ¿el toggle thinking hace algo?
-  aggregate_commandcode.py   # agregado de la sesión de caracterización
-  ab_cc_vs_opencode.py       # A/B intercalado (origen de los dos ficheros ab_*)
-  ab_concurrent.py           # concurrencia A/B back-to-back
-  agg_ab.py                  # tabla comparativa lado a lado
+bench.py     the runner. Use this file for a new measurement.
+results/     the measurements of 2026-09-23 and the summary tables.
+scripts/     the first version of each tool, as it ran during the session.
 ```
 
-`bench.py` es la versión consolidada y probada de esos scripts; se conservan los originales por
-trazabilidad.
+`bench.py` is the consolidated version of the scripts. The files in `scripts/` stay in the repository for traceability.
 
-## Trampas aprendidas (y por qué el código hace lo que hace)
+## Pitfalls
 
-- **Las líneas SSE no son tokens.** El gateway emite deltas vacíos, deltas de razonamiento y a veces
-  agrupa varios tokens por chunk: contar líneas subestima o sobreestima según el momento. Los tokens
-  salen del `usage` final (`completion_tokens` + `completion_tokens_details.reasoning_tokens`).
-- **Sin streaming, TTFB == total** (el cuerpo llega de golpe), así que el "tok/s sin TTFT" calculado
-  sobre una respuesta no-streaming es basura. Para eso está el streaming.
-- **`thinking: {"type": "disabled"}` no desactiva nada** en esta ruta, y `reasoning_effort` no mostró
-  efecto: no esperes bajar la latencia por ahí.
-- **`x-opencode-session` es obligatoria en OpenCode Go** (`400 MissingSessionID`) y hay que mandar UA
-  de navegador: `urllib`/UA de python recibe `403`.
-- **`curl` con varias URLs y un solo `-o`**: el segundo cuerpo se imprime en stdout y se pega al
-  número del `-w`. Un `-o /dev/null` por URL (así lo hace `bench.py`).
-- **Intercala A/B** (`A,B,A,B…`): bloques secuenciales confunden la comparación con la carga variable
-  del proveedor.
-- **Normaliza por tokens, no por tiempo**: dos endpoints nunca emiten el mismo número de tokens para
-  el mismo prompt.
+- A line of SSE is not a token. The gateway sends empty deltas, reasoning deltas, and groups of several tokens in one delta. A line count gives a wrong token count. Read the `usage` block of the response instead.
+- Without streaming, the TTFB and the total time are the same value, because the body arrives in one piece. A rate that you compute from a non-streaming answer is not correct.
+- The value `thinking: {"type": "disabled"}` does not stop the reasoning on these routes. The parameter `reasoning_effort` showed no effect. Do not expect a lower delay from these parameters.
+- OpenCode (Go) requires the header `x-opencode-session`. Without the header, the answer is `400 MissingSessionID`. Send a browser user agent as well, because `urllib` of Python receives `403`.
+- In `curl`, one flag `-o` with several URLs sends the second body to standard output. The body then joins the number of the flag `-w`. Use one `-o /dev/null` for each URL, as `bench.py` does.
+- Alternate the two endpoints in an A/B test. A sequence of all A requests and then all B requests mixes the result with the load of the provider.
+- Compare the rate in tokens, not in seconds. Two endpoints do not send the same number of tokens for the same prompt.
 
-## Salvedades
+## Limits
 
-Campaña de ~10 min por sesión, n=1–6 por escenario, desde una sola máquina. Los ratios ±10 % son
-ruido; la cola del proveedor varía entre ventanas (TTFT de 620 a 2660 ms en el mismo endpoint con el
-mismo prompt). No se probaron reintentos, tool-calling ni streaming con herramientas. Fechas y
-versiones de modelo caducan: vuelve a medir antes de tomar una decisión de coste o de ruta.
+Each campaign ran for about 10 minutes on one machine. Each measurement has 1 to 6 samples, so a difference below 10 percent is noise. The queue of the provider changes between windows: the TTFT of one endpoint went from 620 ms to 2660 ms for the same prompt. The campaign did not test retries, tool calls, or streaming with tools. A measurement becomes stale, so measure again before you change a route or a budget.
 
-## Licencia
+## License
 
-MIT (ver `LICENSE`).
+MIT. See `LICENSE`.
