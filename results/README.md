@@ -22,9 +22,10 @@ limits of that campaign.
 
 ## 2026-09-23T150937Z
 
-The first session. The scripts of the session wrote these files, so four of the five hold a
-bare list of records without a `meta` block, and the time of the day of those four is not
-recorded. The directory takes its name from the only time that the session recorded, 15:09:37Z.
+The first session. The scripts of the session wrote three of the four record files below, so
+those three hold a bare list of records without a `meta` block, and the time of the day of those
+three is not recorded. The directory takes its name from the only time that the session
+recorded, 15:09:37Z, the time of the file that `bench.py` wrote.
 
 | File | Generated (UTC) | Content |
 |---|---|---|
@@ -32,7 +33,7 @@ recorded. The directory takes its name from the only time that the session recor
 | `commandcode_single_20260923.json` | 2026-09-23, time not recorded | The full characterization of CommandCode, with 55 records: transport, short answer, medium answer, streaming, prefill, 1 and 4 parallel requests, and the thinking toggle. |
 | `ab_commandcode_20260923.json` | 2026-09-23, time not recorded | The A/B test, CommandCode side, with 18 records. |
 | `ab_opencode-go_20260923.json` | 2026-09-23, time not recorded | The A/B test, OpenCode (Go) side, with 18 records. |
-| `bench_py_example_commandcode_20260923T150937Z.json` | 2026-09-23T15:09:37Z | An example of the output of `bench.py run`, with 19 records. This file is the only one of the session that holds a `meta` block, and it names the host of the session: `jacanos-MacBook-Air.local`. |
+| `bench_py_example_commandcode_20260923T150937Z.json` | 2026-09-23T15:09:37Z | The output of `bench.py run` over transport, short, long, prefill and concurrent, with 19 records in the `{meta, records}` format. It is the only file of this campaign that holds a `meta` block, which names the host `jacanos-MacBook-Air.local`, and it is the only source of the row *TTFB of /models, reused connection* of `summary.md`, with its three requests over a ready socket. |
 
 ## 2026-09-23T153444Z
 

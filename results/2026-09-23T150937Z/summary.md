@@ -30,6 +30,8 @@ The A/B test alternated the two endpoints. The table gives the median value of e
 
 ## Cause of the difference
 
+The row of the reused connection comes from another window than the rest of the table above. `bench_py_example_commandcode_20260923T150937Z.json` holds its three CommandCode requests, and the OpenCode side of that row was measured in a window whose records this directory does not hold. Every other row of the table holds the records of the A/B test.
+
 The gateway of OpenCode adds a fixed overhead of about 245 ms to each request, and the network does not cause it. With a ready socket, which three requests inside one `curl` command give, `/models` needs 265 ms on OpenCode and 20 ms on CommandCode. That overhead is 38 percent of the gap in the TTFT of a short answer, or 249 ms of 649 ms.
 
 The rest of the gap comes from the queue and the start of the model. OpenCode serves the same model about 1.6 times slower in the sustained decoding.
@@ -70,7 +72,6 @@ The findings below apply to both endpoints.
 | `commandcode_single_20260923.json` | 2026-09-23, time not recorded | The full characterization of CommandCode, with 55 records: transport, short answer, medium answer, streaming, prefill, 1 and 4 parallel requests, and the thinking toggle. |
 | `ab_commandcode_20260923.json` | 2026-09-23, time not recorded | The A/B test, CommandCode side, with 18 records. |
 | `ab_opencode-go_20260923.json` | 2026-09-23, time not recorded | The A/B test, OpenCode (Go) side, with 18 records. |
-| `bench_py_example_commandcode_20260923T150937Z.json` | 2026-09-23T15:09:37Z | An example of the output of `bench.py run`, with 19 records in the `{meta, records}` format. |
-| `<endpoint>_<UTC>.json` | the time in the name | The output of `bench.py run`, in the `{meta, records}` format. |
+| `bench_py_example_commandcode_20260923T150937Z.json` | 2026-09-23T15:09:37Z | The output of `bench.py run` over transport, short, long, prefill and concurrent, with 19 records in the `{meta, records}` format. It is the only file of this session with a `meta` block, and the only source of the row of the reused connection. |
 
-The scripts of this session wrote the first four files, so their time of the day is not recorded. The campaign of Windows 11 is in the directory `../2026-09-23T153444Z/`.
+The scripts of this session wrote the three files above that hold a bare list of records, so their time of the day is not recorded. The campaign of Windows 11 is in the directory `../2026-09-23T153444Z/`.
