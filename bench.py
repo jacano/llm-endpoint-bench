@@ -51,7 +51,7 @@ PROMPT_SHORT = "Reply with exactly: pong"
 PROMPT_LONG = "List the integers from 1 to 250, one per line, no other text."
 PREFILL_WORDS = 6000  # ~18k tokens of ASCII filler
 
-#: Known endpoints. `deepseek-v4.1-flash` is the same model on all three routes;
+#: Known endpoints. `deepseek-v4.1-flash` is the same model on both routes;
 #: only the id spelling and the transport differ.
 ENDPOINTS = {
     "commandcode": {
@@ -65,12 +65,6 @@ ENDPOINTS = {
         "model": "deepseek-v4.1-flash",
         "key_env": "OPENCODE_GO_API_KEY",
         "session_header": True,  # 400 MissingSessionID without it
-    },
-    "opencode-zen": {
-        "base_url": "https://opencode.ai/zen/v1",
-        "model": "deepseek-v4.1-flash",
-        "key_env": "OPENCODE_ZEN_API_KEY",
-        "session_header": False,
     },
 }
 

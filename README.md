@@ -27,7 +27,7 @@ CommandCode is faster than OpenCode (Go) on every measurement. The table gives t
 
 Both routes serve the same model, so the infrastructure makes the difference. The gateway of OpenCode adds about 245 ms to each request with a ready socket, which is about 13 times the cost of CommandCode. OpenCode also decodes 1.6 times slower in the steady state.
 
-OpenCode (Go) has two extra requirements. The header `x-opencode-session` is mandatory. Without the header, the endpoint answers `400 MissingSessionID`. The route for pay-as-you-go use, `/zen/v1`, answers `402 Insufficient account funds` for a subscription key.
+OpenCode (Go) has one extra requirement. The header `x-opencode-session` is mandatory. Without the header, the endpoint answers `400 MissingSessionID`.
 
 ## Requirements
 
@@ -39,7 +39,6 @@ The tool reads a key from the environment first. If the variable is absent, the 
 |---|---|---|---|
 | `commandcode` | `https://api.commandcode.ai/provider/v1` | `COMMANDCODE_API_KEY` | none |
 | `opencode-go` | `https://opencode.ai/zen/go/v1` | `OPENCODE_GO_API_KEY` | `x-opencode-session` |
-| `opencode-zen` | `https://opencode.ai/zen/v1` | `OPENCODE_ZEN_API_KEY` | none |
 
 Run `python3 bench.py list` to print this table from the code.
 
@@ -96,11 +95,7 @@ The identifier of the model is different on each route. CommandCode uses the pre
 
 ## Use with Hermes Agent
 
-Hermes Agent has a provider profile for each of the three endpoints. Set the variable of the key, then select the provider by name.
-
-- `model.provider: commandcode` with `COMMANDCODE_API_KEY`
-- `model.provider: opencode-go` (alias `go`) with `OPENCODE_GO_API_KEY`
-- `model.provider: opencode-zen` (alias `opencode`, `zen`) with `OPENCODE_ZEN_API_KEY`
+Hermes Agent has a provider profile for each endpoint. Set `model.provider` to `commandcode` with `COMMANDCODE_API_KEY`, or to `opencode-go` (alias `go`) with `OPENCODE_GO_API_KEY`.
 
 ## Phases of the tool
 
