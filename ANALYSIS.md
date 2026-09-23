@@ -21,7 +21,7 @@ CommandCode is faster than OpenCode (Go) on every measurement. The table gives t
 each measurement: TTFB is the delay before the response starts, and TTFT the delay before the
 model writes the first token. The full tables are in `results/2026-09-23T153444Z/summary.md`.
 
-| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
+| Measurement | CommandCode | OpenCode (Go) | CommandCode is faster by |
 |---|---|---|---|
 | TLS handshake, new connection | 42.0 ms | 233.8 ms | 5.6 |
 | TTFB of `/models`, new connection | 70.8 ms | 507.9 ms | 7.2 |
@@ -29,13 +29,13 @@ model writes the first token. The full tables are in `results/2026-09-23T153444Z
 | Short answer: TTFT of the first token | 844.0 ms | 1474.4 ms | 1.75 |
 | Long answer: TTFT of the visible token | 1204.1 ms | 2843.3 ms | 2.36 |
 | Long answer: total time | 2375.4 ms | 4604.1 ms | 1.94 |
-| TPS of the sustained decoding | 378.0 tokens/s | 234.1 tokens/s | 0.62 |
-| TPS of the visible content | 438.9 tokens/s | 276.1 tokens/s | 0.63 |
-| 4 parallel requests: rate of one request | 379.6 tokens/s | 233.8 tokens/s | 0.62 |
-| 4 parallel requests: total rate | 808.6 tokens/s | 577.3 tokens/s | 0.71 |
+| TPS of the sustained decoding | 378.0 tokens/s | 234.1 tokens/s | 1.61 |
+| TPS of the visible content | 438.9 tokens/s | 276.1 tokens/s | 1.59 |
+| 4 parallel requests: rate of one request | 379.6 tokens/s | 233.8 tokens/s | 1.61 |
+| 4 parallel requests: total rate | 808.6 tokens/s | 577.3 tokens/s | 1.41 |
 
-A ratio above 1 belongs to a delay; a ratio below 1 belongs to a rate, where a large number is
-better.
+Every ratio is how many times faster CommandCode was, so a larger number is always a larger
+gain for CommandCode, on a delay and on a rate alike.
 
 ## The second window (20:42Z)
 
@@ -43,17 +43,17 @@ The same A/B test ran again on the same host, four hours later. Every difference
 way; the size of a difference moves with the queue of the provider. The full tables are in
 `results/2026-09-23T204204Z/summary.md`.
 
-| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
+| Measurement | CommandCode | OpenCode (Go) | CommandCode is faster by |
 |---|---|---|---|
 | TLS handshake, new connection | 38.6 ms | 247.9 ms | 6.42 |
 | TTFB of `/models`, reused connection | 32.0 ms | 291.6 ms | 9.11 |
 | Short answer: TTFT of the first token | 812.5 ms | 1784.8 ms | 2.20 |
 | Long answer of 500 visible tokens: TTFT of the first visible token | 1462.2 ms | 2429.8 ms | 1.66 |
 | Long answer of 500 visible tokens: total time | 2610.4 ms | 4337.5 ms | 1.66 |
-| TPS of the sustained decoding | 372.1 tokens/s | 234.2 tokens/s | 0.63 |
-| TPS of the visible content | 442.8 tokens/s | 260.4 tokens/s | 0.59 |
-| 4 parallel requests: rate of one request | 377.6 tokens/s | 239.7 tokens/s | 0.63 |
-| 4 parallel requests: total rate | 799.7 tokens/s | 478.8 tokens/s | 0.60 |
+| TPS of the sustained decoding | 372.1 tokens/s | 234.2 tokens/s | 1.59 |
+| TPS of the visible content | 442.8 tokens/s | 260.4 tokens/s | 1.69 |
+| 4 parallel requests: rate of one request | 377.6 tokens/s | 239.7 tokens/s | 1.59 |
+| 4 parallel requests: total rate | 799.7 tokens/s | 478.8 tokens/s | 1.67 |
 
 ## The third window (21:02Z)
 
@@ -61,17 +61,17 @@ The same A/B test ran a third time on the same host, twenty minutes after the se
 difference points the same way, and the delays of the model itself stayed inside the range of the
 windows before it. The full tables are in `results/2026-09-23T210256Z/summary.md`.
 
-| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
+| Measurement | CommandCode | OpenCode (Go) | CommandCode is faster by |
 |---|---|---|---|
 | TLS handshake, new connection | 37.9 ms | 230.0 ms | 6.07 |
 | TTFB of `/models`, reused connection | 15.8 ms | 325.2 ms | 20.58 |
 | Short answer: TTFT of the first token | 826.3 ms | 1781.7 ms | 2.16 |
 | Long answer of 500 visible tokens: TTFT of the first visible token | 1380.4 ms | 2699.5 ms | 1.96 |
 | Long answer of 500 visible tokens: total time | 2503.9 ms | 4645.6 ms | 1.86 |
-| TPS of the sustained decoding | 373.1 tokens/s | 246.7 tokens/s | 0.66 |
-| TPS of the visible content | 446.3 tokens/s | 273.4 tokens/s | 0.61 |
-| 4 parallel requests: rate of one request | 360.5 tokens/s | 217.7 tokens/s | 0.60 |
-| 4 parallel requests: total rate | 866.2 tokens/s | 429.5 tokens/s | 0.50 |
+| TPS of the sustained decoding | 373.1 tokens/s | 246.7 tokens/s | 1.52 |
+| TPS of the visible content | 446.3 tokens/s | 273.4 tokens/s | 1.64 |
+| 4 parallel requests: rate of one request | 360.5 tokens/s | 217.7 tokens/s | 1.67 |
+| 4 parallel requests: total rate | 866.2 tokens/s | 429.5 tokens/s | 2.00 |
 
 ## The fourth window (21:23Z)
 
@@ -80,7 +80,7 @@ Every difference points the same way. The two answers of the `long` phase differ
 than in any window before, and the paragraph after the table states what that does to the rates of
 that phase. The full tables are in `results/2026-09-23T212350Z/summary.md`.
 
-| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
+| Measurement | CommandCode | OpenCode (Go) | CommandCode is faster by |
 |---|---|---|---|
 | TLS handshake, new connection | 40.6 ms | 272.8 ms | 6.72 |
 | TTFB of `/models`, new connection | 64.4 ms | 592.0 ms | 9.19 |
@@ -88,40 +88,41 @@ that phase. The full tables are in `results/2026-09-23T212350Z/summary.md`.
 | Short answer: TTFT of the first token | 753.8 ms | 1822.3 ms | 2.42 |
 | Long answer: TTFT of the visible token | 1677.2 ms | 2043.5 ms | 1.22 |
 | Long answer: total time | 2839.3 ms | 4006.4 ms | 1.41 |
-| TPS of the sustained decoding | 362.9 tokens/s | 260.3 tokens/s | 0.72 |
-| TPS of the visible content | 446.0 tokens/s | 291.9 tokens/s | 0.65 |
-| 4 parallel requests: rate of one request | 366.7 tokens/s | 243.6 tokens/s | 0.66 |
-| 4 parallel requests: total rate | 901.8 tokens/s | 423.9 tokens/s | 0.47 |
+| TPS of the sustained decoding | 362.9 tokens/s | 260.3 tokens/s | 1.39 |
+| TPS of the visible content | 446.0 tokens/s | 291.9 tokens/s | 1.54 |
+| 4 parallel requests: rate of one request | 366.7 tokens/s | 243.6 tokens/s | 1.52 |
+| 4 parallel requests: total rate | 901.8 tokens/s | 423.9 tokens/s | 2.13 |
 
-The rate of the sustained decoding rose to 0.72, the highest of the four windows, because
+The sustained decoding of a whole answer is where CommandCode gained least, 1.39 times, the lowest
+of the four windows, because
 CommandCode wrote 684 output tokens for its long answer where OpenCode wrote 569: the numerator of
 that rate grew by a fifth, and the extra tokens are mostly reasoning. The two answers held the
-same visible content, 500 tokens against 499, and the rate of that content is 0.65.
+same visible content, 500 tokens against 499, and there CommandCode wrote 1.54 times faster.
 
 ## What holds between the windows
 
 The direction of every difference is the same in all four windows. The size of a difference moves
 with the queue of the provider, and two families of measurement move differently.
 
-| OpenCode divided by CommandCode | 15:34 | 20:42 | 21:02 | 21:23 |
+| CommandCode is faster by | 15:34 | 20:42 | 21:02 | 21:23 |
 |---|---|---|---|---|
 | TTFB of `/models`, reused connection | 11.77 | 9.11 | 20.58 | 10.95 |
 | Short answer: TTFT of the first token | 1.75 | 2.20 | 2.16 | 2.42 |
 | Long answer: TTFT of the visible token | 2.36 | 1.66 | 1.96 | 1.22 |
 | Long answer: total time | 1.94 | 1.66 | 1.86 | 1.41 |
-| TPS of the sustained decoding | 0.62 | 0.63 | 0.66 | 0.72 |
-| TPS of the visible content | 0.63 | 0.59 | 0.61 | 0.65 |
-| 4 parallel requests: rate of one request | 0.62 | 0.63 | 0.60 | 0.66 |
+| TPS of the sustained decoding | 1.61 | 1.59 | 1.52 | 1.39 |
+| TPS of the visible content | 1.59 | 1.69 | 1.64 | 1.54 |
+| 4 parallel requests: rate of one request | 1.61 | 1.59 | 1.67 | 1.52 |
 
 - The rates are the stable family, and the visible content of a long answer is the most stable of
-  them: 0.63, 0.59, 0.61 and 0.65. One request under 4 parallel requests gives 0.62, 0.63, 0.60 and
-  0.66.
-- The rate of the sustained decoding of a whole answer moved further than the others, from 0.62 to
-  0.72, and the fourth window shows the cause. That rate divides the output tokens of an answer by
+  them: 1.59, 1.69, 1.64 and 1.54. One request under 4 parallel requests gives 1.61, 1.59, 1.67 and
+  1.52.
+- The sustained decoding of a whole answer moved further than the others, from 1.61 to 1.39, and the
+  fourth window shows the cause. That measurement divides the output tokens of an answer by
   the time of its generation, and the two `long` answers differed by a fifth in output tokens: 684
   on CommandCode against 569 on OpenCode, because CommandCode spent more of them on reasoning, 184
-  against 70. The larger numerator lifts the rate. The visible content of the same two answers
-  matched, 500 tokens against 499, and the rate of that content moved least of all.
+  against 70. The larger numerator lifts that rate. The visible content of the same two answers
+  matched, 500 tokens against 499, and there the gain moved least of all.
 - The ratios of the delays moved further in the fourth window than in the others: the gap in the
   TTFT of a short answer went from 1.75 to 2.42 across the four windows, and the gap in the long
   answer fell from 2.36 to 1.22, where the two routes came closest. Both sides moved in that
