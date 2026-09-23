@@ -65,12 +65,12 @@ The findings below apply to both endpoints.
 
 ## Raw data in this directory
 
-| File | Content |
-|---|---|
-| `commandcode_single.json` | The full characterization of CommandCode, with 55 records: transport, short answer, medium answer, streaming, prefill, 1 and 4 parallel requests, and the thinking toggle. |
-| `ab_commandcode.json` | The A/B test, CommandCode side, with 18 records. |
-| `ab_opencode-go.json` | The A/B test, OpenCode (Go) side, with 18 records. |
-| `bench_py_example_commandcode.json` | An example of the output of `bench.py run`, with 19 records in the `{meta, records}` format. |
-| `<endpoint>_<UTC>.json` | The output of `bench.py run`, in the `{meta, records}` format. |
+| File | Generated (UTC) | Content |
+|---|---|---|
+| `commandcode_single_20260923.json` | 2026-09-23, time not recorded | The full characterization of CommandCode, with 55 records: transport, short answer, medium answer, streaming, prefill, 1 and 4 parallel requests, and the thinking toggle. |
+| `ab_commandcode_20260923.json` | 2026-09-23, time not recorded | The A/B test, CommandCode side, with 18 records. |
+| `ab_opencode-go_20260923.json` | 2026-09-23, time not recorded | The A/B test, OpenCode (Go) side, with 18 records. |
+| `bench_py_example_commandcode_20260923T150937Z.json` | 2026-09-23T15:09:37Z | An example of the output of `bench.py run`, with 19 records in the `{meta, records}` format. |
+| `<endpoint>_<UTC>.json` | the time in the name | The output of `bench.py run`, in the `{meta, records}` format. |
 
-The campaign of Windows 11 is in the directory `../2026-09-23-windows/`.
+The scripts of this session wrote the first four files, so their time of the day is not recorded. The campaign of Windows 11 is in the directory `../2026-09-23-windows/`.

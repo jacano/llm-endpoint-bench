@@ -65,8 +65,8 @@ Run `python3 bench.py list` to print this table from the code.
 5. Run `python3 bench.py run --endpoint commandcode --phases concurrent --concurrent 4`. The command measures 4 requests in parallel.
 6. Run `python3 bench.py run --endpoint commandcode --phases thinking`. The command sends one long answer under each reasoning control, so it shows whether the route honours them.
 7. Run `python3 bench.py ab --a commandcode --b opencode-go`. The command alternates the two endpoints, so the load of the provider hits both sides in the same way.
-8. Run `python3 bench.py report results/2026-09-23-macos/ab_opencode-go.json`. The command prints the median, the minimum, and the maximum of each measurement.
-9. Run `python3 bench.py compare results/2026-09-23-windows/ab_commandcode.json results/2026-09-23-windows/ab_opencode-go.json`. The command prints one markdown table that holds the median of each metric of the two files, the quotient and the name of the faster endpoint. Paste the table into a summary.
+8. Run `python3 bench.py report results/2026-09-23-macos/ab_opencode-go_20260923.json`. The command prints the time of the run, the median, the minimum, and the maximum of each measurement.
+9. Run `python3 bench.py compare results/2026-09-23-windows/ab_commandcode_20260923T153444Z.json results/2026-09-23-windows/ab_opencode-go_20260923T153444Z.json`. The command prints one markdown table that holds the median of each metric of the two files, the quotient and the name of the faster endpoint. Paste the table into a summary.
 
 The command of the full campaign, as it ran for the summaries in `results/`:
 
@@ -76,7 +76,7 @@ python3 bench.py ab --a commandcode --b opencode-go \
   --out-dir results/2026-09-23-windows
 ```
 
-Each run writes one file in `results/`, or in the directory of the option `--out-dir`. The name of the file holds the endpoint and the time in UTC. The file holds a `meta` block and the raw records. Give the records of one session one directory, as the campaigns in `results/` do: `results/README.md` is the index of the campaigns and states the format of a file.
+Each run writes one file in `results/`, or in the directory of the option `--out-dir`. The name of the file holds the endpoint and the time in UTC, as in `ab_commandcode_20260923T153444Z.json`. The file holds a `meta` block and the raw records, and the `meta` block repeats the time of the run. Give the records of one session one directory, as the campaigns in `results/` do: `results/README.md` is the index of the campaigns and states the format of a file. The commands `report` and `compare` print the time and the host of each file.
 
 ## How to measure another endpoint
 

@@ -24,13 +24,16 @@ Examples
     python bench.py run --endpoint commandcode
     python bench.py run --endpoint opencode-go --phases short,long
     python bench.py ab --a commandcode --b opencode-go          # interleaved A/B
-    python bench.py report results/2026-09-23-macos/ab_opencode-go.json
-    python bench.py compare results/2026-09-23-windows/ab_commandcode.json \
-        results/2026-09-23-windows/ab_opencode-go.json
+    python bench.py report results/2026-09-23-macos/ab_opencode-go_20260923.json
+    python bench.py compare results/2026-09-23-windows/ab_commandcode_20260923T153444Z.json \
+        results/2026-09-23-windows/ab_opencode-go_20260923T153444Z.json
 
 A result file lands in results/ by default. Give --out-dir to collect the files of one
 campaign in one directory, as in results/2026-09-23-windows/. See results/README.md for
-the layout of that directory and for the format of a result file.
+the layout of that directory and for the format of a result file. The name of a file is
+<endpoint>_<UTC>.json, and ab_<endpoint>_<UTC>.json for a side of an A/B test: the time of
+the run stays in the name of the file and in its `meta` block. The commands `report` and
+`compare` print that time.
 
 Any other OpenAI-compatible endpoint:
     python bench.py run --base-url https://api.example.com/v1 --model vendor/model \
@@ -361,11 +364,12 @@ def summarize(r: dict) -> str:
                r.get("out_tokens"), r.get("reasoning_tokens"), r.get("tok_per_s_total")))
 
 
-def write_results(recs: list[dict], ep: dict, phases: list[str], out_dir: str | None = None) -> str:
+def write_results(recs: list[dict], ep: dict, phases: list[str], out_dir: str | None = None,
+                  prefix: str = "") -> str:
     out_dir = out_dir or RESULTS
     os.makedirs(out_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    tag = "".join(c if c.isalnum() or c in "-_." else "_" for c in ep["name"])
+    tag = prefix + "".join(c if c.isalnum() or c in "-_." else "_" for c in ep["name"])
     path = os.path.join(out_dir, "%s_%s.json" % (tag, stamp))
     payload = {"meta": {"endpoint": ep["name"], "base_url": ep["base_url"], "model": ep["model"],
                         "phases": phases, "started_utc": stamp, "host": platform.node(),
@@ -386,6 +390,21 @@ def load_records(path: str) -> list[dict]:
     return data  # bare list, e.g. the raw session dumps in results/
 
 
+def load_meta(path: str) -> dict:
+    data = json.load(open(path))
+    return (data.get("meta") or {}) if isinstance(data, dict) else {}
+
+
+def generation_line(path: str) -> str:
+    """When and where a file was written. A file of a session before bench.py holds no meta."""
+    m = load_meta(path)
+    if not m:
+        return "no meta block: the file records no time of the run"
+    return "generated %s on %s | endpoint %s | model %s | phases %s" % (
+        m.get("started_utc", "?"), m.get("host", "?"), m.get("endpoint", "?"),
+        m.get("model", "?"), ",".join(m.get("phases") or []))
+
+
 def med(vals):
     vals = [v for v in vals if isinstance(v, (int, float))]
     return round(st.median(vals), 1) if vals else None
@@ -395,6 +414,7 @@ def report(path: str) -> None:
     recs = load_records(path)
     clean = [r for r in recs if not r.get("error")]
     print("%s: %d records (%d clean)" % (path, len(recs), len(clean)))
+    print("  " + generation_line(path))
     kinds = sorted({r.get("kind") for r in clean})
     metrics = {
         "models": ["dns_ms", "tcp_ms", "tls_ms", "ttfb_ms"],
@@ -468,7 +488,9 @@ def compare(path_a: str, path_b: str, label_a: str | None = None, label_b: str |
     lb = str(label_b or (rb[0].get("endpoint") if rb else "B"))
     ks = kinds or sorted({str(r.get("kind")) for r in ra + rb if r.get("kind")})
     print("%s (%d records)" % (path_a, len(ra)))
+    print("  " + generation_line(path_a))
     print("%s (%d records)" % (path_b, len(rb)))
+    print("  " + generation_line(path_b))
     print("")
     print("| Kind | Metric | %s | %s | %s / %s | Better |" % (la, lb, lb, la))
     print("|---|---|---|---|---|---|")
@@ -535,7 +557,7 @@ def cmd_ab(args) -> None:
                     print("  %-14s %-10s [%d] %s" % (ep["name"], phase, i + 1, summarize(r)), flush=True)
                 out[ep["name"]] += rows
     for ep in (a, b):
-        path = write_results(out[ep["name"]], ep, phases, args.out_dir)
+        path = write_results(out[ep["name"]], ep, phases, args.out_dir, prefix="ab_")
         print("wrote", path)
 
 
