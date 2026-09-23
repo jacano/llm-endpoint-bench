@@ -673,8 +673,9 @@ def main() -> None:
     args = ap.parse_args()
     if args.cmd == "list":
         for name, cfg in ENDPOINTS.items():
-            print("%-14s %-45s model=%s key=%s%s" % (
+            print("%-14s %-45s model=%s key=%s %s%s" % (
                 name, cfg["base_url"], cfg["model"], cfg["key_env"],
+                "found" if api_key(cfg["key_env"]) else "MISSING",
                 "  (+ x-opencode-session)" if cfg["session_header"] else ""))
         return
     args.func(args)
