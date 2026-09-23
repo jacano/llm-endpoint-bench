@@ -65,6 +65,14 @@ Run `python3 bench.py list` to print this table from the code.
 5. Run `python3 bench.py run --endpoint commandcode --phases concurrent --concurrent 4`. The command measures 4 requests in parallel.
 6. Run `python3 bench.py ab --a commandcode --b opencode-go`. The command alternates the two endpoints, so the load of the provider hits both sides in the same way.
 7. Run `python3 bench.py report results/ab_opencode-go_20260923.json`. The command prints the median, the minimum, and the maximum of each measurement.
+8. Run `python3 bench.py compare results/commandcode_<UTC>.json results/opencode-go_<UTC>.json`. The command prints one markdown table that holds the median of each metric of the two files, the quotient and the name of the faster endpoint. Paste the table into a summary.
+
+The command of the full campaign, as it ran for the summaries in `results/`:
+
+```bash
+python3 bench.py ab --a commandcode --b opencode-go \
+  --phases transport,short,long,prefill,concurrent --n 4 --concurrent 4
+```
 
 Each run writes one file in `results/`. The name of the file holds the endpoint and the time in UTC. The file holds a `meta` block and the raw records.
 
@@ -126,7 +134,7 @@ Hermes Agent has a provider profile for each endpoint. Set `model.provider` to `
 - `ttft_any_ms` is the delay before the first delta of any kind, reasoning or content.
 - `ttft_content_ms` is the delay before the first visible token. The difference between this value and `ttft_any_ms` is the delay that a user sees as a slow start.
 - `tok_per_s_total` is `completion_tokens` divided by the time between the first delta and the last delta. The value includes the reasoning tokens.
-- `tok_per_s_visible` is the number of content tokens divided by the time of the content phase. Do not read this value for an answer of 2 or 3 tokens, because the result is a large number without meaning.
+- `tok_per_s_visible` is the number of content tokens divided by the time of the content phase. Do not read this value for an answer of 2 or 3 tokens, because the result is a large number without meaning. The tool does not print the value for a phase whose median answer holds fewer than 10 content tokens, and the command `compare` hides the line.
 - `models_reuse.ttfb_ms` is the TTFB with a ready socket. The value is the fixed cost of the gateway for each request.
 - `concurrent_summary.aggregate_tok_per_s` is the number of tokens of all requests divided by the wall clock time.
 
@@ -135,10 +143,28 @@ Hermes Agent has a provider profile for each endpoint. Set `model.provider` to `
 ```
 bench.py     the runner. Use this file for a new measurement.
 results/     the measurements of 2026-09-23 and the summary tables of both campaigns.
-scripts/     the first version of each tool, as it ran during the session.
+scripts/     the first version of each tool, as it ran during the session, and no_secrets.py.
 ```
 
-`bench.py` is the consolidated version of the scripts. The files in `scripts/` stay in the repository for traceability.
+`bench.py` is the consolidated version of the scripts. The files in `scripts/` stay in the repository for traceability, and `scripts/no_secrets.py` guards a commit.
+
+## Before you commit
+
+The tool `scripts/no_secrets.py` refuses a commit that carries a credential. It collects each value from the environment and from the Hermes key files, then searches the files for those values and for the usual shapes of a key. It prints the path, the line and the name of the rule that matched. It never prints the value.
+
+```bash
+python3 scripts/no_secrets.py --staged         # the files of git's index
+python3 scripts/no_secrets.py results/*.json   # the files that you name
+```
+
+Install the tool as a hook, so git runs it before each commit:
+
+```bash
+printf '#!/bin/sh\nexec python scripts/no_secrets.py --staged\n' > .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+A key that reached a remote stays in the history of the repository. Remove the file from the commit, then rotate the key.
 
 ## Pitfalls
 
@@ -152,7 +178,7 @@ scripts/     the first version of each tool, as it ran during the session.
 
 ## Limits
 
-Each campaign ran for about 10 minutes on one machine. Each measurement has 1 to 6 samples, so a difference below 10 percent is noise. The queue of the provider changes between windows: the TTFT of one endpoint went from 620 ms to 2660 ms for the same prompt. The campaign did not test retries, tool calls, or streaming with tools. A measurement becomes stale, so measure again before you change a route or a budget.
+Each campaign ran for about 10 minutes on one machine. Each measurement has 1 to 20 samples, so a difference below 10 percent is noise. The queue of the provider changes between windows: the TTFT of one endpoint went from 620 ms to 2660 ms for the same prompt. The campaign did not test retries, tool calls, or streaming with tools. A measurement becomes stale, so measure again before you change a route or a budget.
 
 ## License
 

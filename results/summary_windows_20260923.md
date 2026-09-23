@@ -90,9 +90,10 @@ The TPS of the sustained decoding is again about 1.6 times lower on OpenCode
   on the reasoning, so the response holds no visible token and the value
   `ttft_content_ms` is absent on that side. The value `ttft_any_ms` is correct on both
   sides.
-- The value `tok_per_s_visible` has no meaning for an answer of 3 tokens. The median of
-  the `short` phase is a large number without meaning. Read this value for long answers
-  only.
+- The value `tok_per_s_visible` has no meaning for an answer of 3 tokens, because the result
+  is a large number. The command `report` does not print the value for a phase whose median
+  answer holds fewer than 10 content tokens, so the `short` phase of this campaign has no
+  value. Read this value for long answers only.
 - The campaign did not test retries, tool calls, or streaming with tools.
 
 ## Raw data in `results/`
