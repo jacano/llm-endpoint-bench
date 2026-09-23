@@ -26,8 +26,9 @@ Any other OpenAI-compatible endpoint:
     python bench.py run --base-url https://api.example.com/v1 --model vendor/model \
         --key-env EXAMPLE_API_KEY --session-header --tag example
 
-Keys are read from the environment, falling back to ~/.hermes/.env (names only are
-ever printed). Nothing in this repo contains a credential.
+Keys are read from the environment, falling back to ~/.hermes/.env and, on Windows,
+to %LOCALAPPDATA%/hermes/.env (names only are ever printed). Nothing in this repo
+contains a credential.
 """
 from __future__ import annotations
 
@@ -35,6 +36,7 @@ import argparse
 import concurrent.futures as cf
 import json
 import os
+import platform
 import statistics as st
 import subprocess
 import sys
@@ -43,9 +45,17 @@ import uuid
 
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
-HERMES_ENV = os.path.expanduser("~/.hermes/.env")
+#: Where the keys may live. The first file that exists wins; names only are printed.
+ENV_FILES = [
+    os.path.expanduser("~/.hermes/.env"),
+    # Hermes Agent on Windows keeps its profile under LOCALAPPDATA.
+    os.path.join(os.environ.get("LOCALAPPDATA", ""), "hermes", ".env"),
+]
+HERMES_ENV = ENV_FILES[0]
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(HERE, "results")
+#: curl is a native program: on Windows it reads `NUL`, not the MSYS mount `/dev/null`.
+NULL = "NUL" if os.name == "nt" else "/dev/null"
 
 PROMPT_SHORT = "Reply with exactly: pong"
 PROMPT_LONG = "List the integers from 1 to 250, one per line, no other text."
@@ -71,16 +81,18 @@ ENDPOINTS = {
 
 # --------------------------------------------------------------------------- env
 
-def load_env_file(path: str = HERMES_ENV) -> dict:
+def load_env_file(path: str | None = None) -> dict:
     out = {}
-    if not os.path.exists(path):
-        return out
-    with open(path, encoding="utf-8", errors="ignore") as fh:
-        for line in fh:
-            line = line.strip()
-            if "=" in line and not line.startswith("#"):
-                k, v = line.split("=", 1)
-                out[k.strip()] = v.strip().strip('"').strip("'")
+    paths = [path] if path else ENV_FILES
+    for p in paths:
+        if not p or not os.path.exists(p):
+            continue
+        with open(p, encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, v = line.split("=", 1)
+                    out.setdefault(k.strip(), v.strip().strip('"').strip("'"))
     return out
 
 
@@ -128,7 +140,7 @@ def transport(ep: dict) -> list[dict]:
     recs = []
     url = ep["base_url"] + "/models"
     for i in range(3):
-        args = ["curl", "-sS", "-o", "/dev/null"] + headers(ep) + \
+        args = ["curl", "-sS", "-o", NULL] + headers(ep) + \
             ["-w", "%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} "
                    "%{time_starttransfer} %{time_total}", url]
         _, out, err = curl(args, timeout=60)
@@ -144,7 +156,7 @@ def transport(ep: dict) -> list[dict]:
     # here is the per-request gateway overhead with no handshake in it.
     # one -o per URL, else curl writes the extra bodies to stdout and the numbers
     # get glued onto them.
-    args = ["curl", "-sS"] + ["-o", "/dev/null"] * 3 + headers(ep) + \
+    args = ["curl", "-sS"] + ["-o", NULL] * 3 + headers(ep) + \
         ["-w", "%{time_starttransfer}\n", url, url, url]
     _, out, _ = curl(args, timeout=90)
     reuses = [ms(x) for x in out.split() if _is_number(x)]
@@ -305,7 +317,8 @@ def write_results(recs: list[dict], ep: dict, phases: list[str]) -> str:
     tag = "".join(c if c.isalnum() or c in "-_." else "_" for c in ep["name"])
     path = os.path.join(RESULTS, "%s_%s.json" % (tag, stamp))
     payload = {"meta": {"endpoint": ep["name"], "base_url": ep["base_url"], "model": ep["model"],
-                        "phases": phases, "started_utc": stamp, "host": os.uname().nodename,
+                        "phases": phases, "started_utc": stamp, "host": platform.node(),
+                        "platform": platform.platform(), "python": platform.python_version(),
                         "runner": "bench.py"},
                "records": recs}
     with open(path, "w") as fh:
