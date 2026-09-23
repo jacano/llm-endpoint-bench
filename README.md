@@ -4,7 +4,7 @@ This repository measures three properties of an OpenAI-compatible model endpoint
 
 The tool is `bench.py`. It sends each request with `curl`, so no client library retry hides the slow end of the distribution. It reads the token counts from the `usage` block of the response. It does not count server-sent event (SSE) lines, because empty deltas and reasoning deltas make a line count wrong.
 
-The directory `results/` holds the measurements of 2026-09-23. On that date, one model (`deepseek-v4.1-flash`) ran on two providers: CommandCode and OpenCode (Go). The file `results/summary.md` holds the tables and the findings.
+The directory `results/` holds the measurements of 2026-09-23. On that date, one model (`deepseek-v4.1-flash`) ran on two providers: CommandCode and OpenCode (Go). The file `results/summary.md` holds the tables and the findings of the first campaign (macOS). The file `results/summary_windows_20260923.md` holds the same test again on Windows 11.
 
 ## Results
 
@@ -29,11 +29,25 @@ Both routes serve the same model, so the infrastructure makes the difference. Th
 
 OpenCode (Go) has one extra requirement. The header `x-opencode-session` is mandatory. Without the header, the endpoint answers `400 MissingSessionID`.
 
+## Results of the second campaign (Windows 11)
+
+The same A/B test ran again on a Windows 11 host through another network path. The absolute values differ, but the ratios agree with the first campaign. The full tables are in `results/summary_windows_20260923.md`.
+
+| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
+|---|---|---|---|
+| TTFB of `/models`, reused connection | 21.3 ms | 250.7 ms | 11.8 times |
+| Short answer: TTFT of the first token | 844.0 ms | 1474.4 ms | 1.75 times |
+| Long answer of 500 visible tokens: TTFT of the first visible token | 1204.1 ms | 2843.3 ms | 2.36 times |
+| TPS of the sustained decoding | 378.0 tokens/s | 234.1 tokens/s | 0.62 |
+| 4 parallel requests: total rate | 808.6 tokens/s | 577.3 tokens/s | 1.40 times |
+
+The conclusion does not depend on the host: CommandCode is faster on every measurement in both campaigns.
+
 ## Requirements
 
-You need `python3` and `curl`. The tool uses the standard library of Python only.
+You need `python3` and `curl`. The tool uses the standard library of Python only. The tool runs on Linux, macOS and Windows. On Windows, use `python` in place of `python3`, and run the commands from Git Bash, because the tool writes the body of a request with `--data-binary @-`.
 
-The tool reads a key from the environment first. If the variable is absent, the tool reads the key from the file `~/.hermes/.env`. The tool prints the name of a variable only, never the value.
+The tool reads a key from the environment first. If the variable is absent, the tool reads the key from the file `~/.hermes/.env`, and on Windows also from `%LOCALAPPDATA%\hermes\.env`. The tool prints the name of a variable only, never the value.
 
 | Endpoint name | Base URL | Variable of the key | Extra header |
 |---|---|---|---|
@@ -120,7 +134,7 @@ Hermes Agent has a provider profile for each endpoint. Set `model.provider` to `
 
 ```
 bench.py     the runner. Use this file for a new measurement.
-results/     the measurements of 2026-09-23 and the summary tables.
+results/     the measurements of 2026-09-23 and the summary tables of both campaigns.
 scripts/     the first version of each tool, as it ran during the session.
 ```
 
@@ -132,7 +146,7 @@ scripts/     the first version of each tool, as it ran during the session.
 - Without streaming, the TTFB and the total time are the same value, because the body arrives in one piece. A rate that you compute from a non-streaming answer is not correct.
 - The value `thinking: {"type": "disabled"}` does not stop the reasoning on these routes. The parameter `reasoning_effort` showed no effect. Do not expect a lower delay from these parameters.
 - OpenCode (Go) requires the header `x-opencode-session`. Without the header, the answer is `400 MissingSessionID`. Send a browser user agent as well, because `urllib` of Python receives `403`.
-- In `curl`, one flag `-o` with several URLs sends the second body to standard output. The body then joins the number of the flag `-w`. Use one `-o /dev/null` for each URL, as `bench.py` does.
+- In `curl`, one flag `-o` with several URLs sends the second body to standard output. The body then joins the number of the flag `-w`. Use one `-o /dev/null` for each URL, as `bench.py` does. On Windows, curl is a native program and reads `NUL` in place of the mount `/dev/null`.
 - Alternate the two endpoints in an A/B test. A sequence of all A requests and then all B requests mixes the result with the load of the provider.
 - Compare the rate in tokens, not in seconds. Two endpoints do not send the same number of tokens for the same prompt.
 
