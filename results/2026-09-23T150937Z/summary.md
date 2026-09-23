@@ -22,11 +22,13 @@ The A/B test alternated the two endpoints. The table gives the median value of e
 | Long answer of 620 tokens: TTFT of the first token | 884 ms | 2052 ms | 2.32 times |
 | Long answer of 620 tokens: TTFT of the visible token | 1511 ms | 3033 ms | 2.01 times |
 | Long answer of 620 tokens: total time | 2673 ms | 4948 ms | 1.85 times |
-| TPS of the sustained decoding | 360 tokens/s (343 to 364) | 230 tokens/s (199 to 269) | 1.56 times |
-| TPS of the visible content | 439 tokens/s | 260 tokens/s | 1.69 times |
+| TPS of the sustained decoding | 360 tokens/s (343 to 364) | 230 tokens/s (199 to 269) | 0.64 |
+| TPS of the visible content | 439 tokens/s | 260 tokens/s | 0.59 |
 | TTFT with 18000 input tokens | 1671 ms | 3774 ms | 2.26 times |
-| 4 parallel requests: rate of one request | 378 tokens/s (373 to 385) | 233 tokens/s (215 to 259) | 1.63 times |
-| 4 parallel requests: total rate | 947 tokens/s and 1.66 requests/s | 476 tokens/s and 0.81 requests/s | 2.0 times |
+| 4 parallel requests: rate of one request | 378 tokens/s (373 to 385) | 233 tokens/s (215 to 259) | 0.62 |
+| 4 parallel requests: total rate | 947 tokens/s and 1.66 requests/s | 476 tokens/s and 0.81 requests/s | 0.50 |
+
+A ratio above 1 belongs to a delay; a ratio below 1 belongs to a rate, where a large number is better.
 
 ## Cause of the difference
 

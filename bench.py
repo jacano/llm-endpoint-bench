@@ -88,13 +88,14 @@ def default_out_dir() -> str:
 PROMPT_SHORT = "Reply with exactly: pong"
 PROMPT_LONG = "List the integers from 1 to 250, one per line, no other text."
 PREFILL_WORDS = 6000  # ~18k tokens of ASCII filler
-#: Below this number of tokens in the numerator, a rate is noise and is not reported:
-#: `tok_per_s_total` over the output tokens, `tok_per_s_visible` over the content ones.
-MIN_RATE_TOKENS = 10
-#: The numerator of each rate, with the words for it: `tok_per_s_visible` divides by the
-#: window of the content, `tok_per_s_total` by the window of the whole answer.
-RATE_OF = {"tok_per_s_visible": ("content_tokens", "content tokens"),
-           "tok_per_s_total": ("out_tokens", "output tokens")}
+#: The floor of the numerator of each rate, with the words for it. Below the floor the
+#: window is an edge of a short answer rather than a rate of decoding. `tok_per_s_total`
+#: spans the reasoning as well as the content, so it needs a longer answer behind it.
+MIN_CONTENT_TOKENS = 10
+MIN_OUTPUT_TOKENS = 50
+#: The numerator of each rate: the field, the words for it, and the floor it needs.
+RATE_OF = {"tok_per_s_visible": ("content_tokens", "content tokens", MIN_CONTENT_TOKENS),
+           "tok_per_s_total": ("out_tokens", "output tokens", MIN_OUTPUT_TOKENS)}
 #: The reasoning controls of the gateway, for the phase `thinking`. The README says
 #: that the route ignores all of them.
 THINKING_MODES = [
@@ -457,18 +458,18 @@ def med(vals):
     return round(st.median(vals), 1) if vals else None
 
 
-def thin_answer(key: str, *rowsets: list[dict]) -> str | None:
-    """The words of the numerator when a rate rests on too few tokens, else None.
+def thin_answer(key: str, *rowsets: list[dict]) -> tuple[int, str] | None:
+    """The floor and the words of the numerator when a rate rests on too few tokens.
 
     Every rowset given must hold enough tokens: a rate that one side of a comparison
     cannot support is not a rate for either side.
     """
     if key not in RATE_OF:
         return None
-    field, words = RATE_OF[key]
+    field, words, floor = RATE_OF[key]
     counts = [med([r.get(field) for r in rows]) for rows in rowsets if rows]
     counts = [c for c in counts if c is not None]
-    return words if (counts and min(counts) < MIN_RATE_TOKENS) else None
+    return (floor, words) if (counts and min(counts) < floor) else None
 
 
 def report(path: str) -> None:
@@ -505,11 +506,11 @@ def report(path: str) -> None:
             m = med(vals)
             if m is None:
                 continue
-            words = thin_answer(key, rows)
-            if words:
-                # a rate over two or three tokens is a large number without meaning
+            thin = thin_answer(key, rows)
+            if thin:
+                # a rate over a handful of tokens is a large number without meaning
                 print("      %-18s skipped: the answer holds fewer than %d %s"
-                      % (key, MIN_RATE_TOKENS, words))
+                      % (key, thin[0], thin[1]))
                 continue
             nums = [v for v in vals if isinstance(v, (int, float))]
             print("      %-18s median %-9s min %-9s max %-9s" % (key, m, round(min(nums), 1), round(max(nums), 1)))
@@ -532,8 +533,15 @@ COMPARE_METRICS = {
 COMPARE_DEFAULT = ["ttft_any_ms", "ttft_content_ms", "total_ms", "in_tokens", "out_tokens",
                    "reasoning_tokens", "content_tokens", "tok_per_s_total", "tok_per_s_visible"]
 #: Metrics that are counts, not scores. The tool names no winner for them: more output
-#: tokens is not a better result, and a shorter wall clock with fewer tokens is not either.
-NO_VERDICT = {"in_tokens", "out_tokens", "reasoning_tokens", "content_tokens", "wall_s"}
+#: tokens is not a better result, a shorter wall clock with fewer tokens is not either, and
+#: a route that lists more model ids is not faster.
+NO_VERDICT = {"in_tokens", "out_tokens", "reasoning_tokens", "content_tokens", "wall_s", "n_ids"}
+#: A verdict needs this many samples behind each side. One request proves nothing, as the
+#: Limits of the README say.
+MIN_SAMPLES = 3
+#: Above this fraction of difference in the output tokens of the two sides, a timing or a
+#: rate of the phase measures the work of the answer as well as the route, and the tool says so.
+WORK_DIFF = 0.20
 
 
 def metrics_for(kind: str) -> list[str]:
@@ -553,39 +561,63 @@ def compare(path_a: str, path_b: str, label_a: str | None = None, label_b: str |
     print("%s (%d records)" % (path_b, len(rb)))
     print("  " + generation_line(path_b))
     print("")
-    print("| Kind | Metric | %s | %s | %s / %s | Better |" % (la, lb, lb, la))
-    print("|---|---|---|---|---|---|")
+    print("| Kind | Metric | %s | %s | %s / %s | n | Better |" % (la, lb, lb, la))
+    print("|---|---|---|---|---|---|---|")
     hidden = {}
+    few_samples = set()
+    work = {}
     for kind in ks:
         rows_a = [r for r in ra if r.get("kind") == kind]
         rows_b = [r for r in rb if r.get("kind") == kind]
         if not rows_a and not rows_b:
             continue
+        n = min(len(rows_a), len(rows_b))
+        if n < MIN_SAMPLES:
+            few_samples.add(kind)
+        out_a = med([r.get("out_tokens") for r in rows_a])
+        out_b = med([r.get("out_tokens") for r in rows_b])
+        if out_a and out_b and max(out_a, out_b) / min(out_a, out_b) - 1 > WORK_DIFF:
+            work[kind] = (out_a, out_b)
         for key in metrics_for(kind):
             a = med([r.get(key) for r in rows_a])
             b = med([r.get(key) for r in rows_b])
             if a is None and b is None:
                 continue
-            words = thin_answer(key, rows_a, rows_b)
-            if words:
-                hidden.setdefault(key, [set(), words])[0].add(kind)
+            thin = thin_answer(key, rows_a, rows_b)
+            if thin:
+                hidden.setdefault(key, [set(), thin])[0].add(kind)
                 continue
             ratio = round(b / a, 2) if (a and b) else None
-            print("| %s | %s | %s | %s | %s | %s |" % (kind, key, fmt(a), fmt(b), fmt(ratio),
-                                                       verdict(key, a, b, la, lb)))
+            print("| %s | %s | %s | %s | %s | %d/%d | %s |"
+                  % (kind, key, fmt(a), fmt(b), fmt(ratio), len(rows_a), len(rows_b),
+                     verdict(key, a, b, la, lb, n)))
     for key in sorted(hidden):
-        kinds_hidden, words = hidden[key]
+        kinds_hidden, (floor, words) = hidden[key]
         print("")
         print("`%s` is not shown for %s: the median answer of the phase holds fewer than "
-              "%d %s." % (key, ", ".join(sorted(kinds_hidden)), MIN_RATE_TOKENS, words))
+              "%d %s." % (key, ", ".join(sorted(kinds_hidden)), floor, words))
+    if few_samples:
+        print("")
+        print("The column `Better` stays empty for the phases %s: the tool asks for %d samples "
+              "on each side before it names a winner, and one sample proves nothing."
+              % (", ".join(sorted(few_samples)), MIN_SAMPLES))
+    if work:
+        print("")
+        print("The two sides do not write the same number of output tokens in %s, so a timing "
+              "or a rate of those phases measures the work of the answer as well as the route."
+              % ", ".join("`%s` (%s against %s)" % (k, fmt(work[k][0]), fmt(work[k][1]))
+                          for k in sorted(work)))
     print("")
     print("The column `%s / %s` is the value of %s divided by the value of %s. "
-          "A difference below %d percent shows `same`. The column `Better` stays empty for a "
-          "count, because a count is not a score." % (lb, la, lb, la, NOISE * 100))
+          "A difference below %d percent shows `same`. A ratio below 1 belongs to a rate, "
+          "where a large number is better. The column `Better` stays empty for a count, "
+          "because a count is not a score." % (lb, la, lb, la, NOISE * 100))
 
 
-def verdict(key: str, a, b, label_a: str = "A", label_b: str = "B") -> str:
+def verdict(key: str, a, b, label_a: str = "A", label_b: str = "B", n: int | None = None) -> str:
     if key in NO_VERDICT or a is None or b is None or not a or not b:
+        return "-"
+    if n is not None and n < MIN_SAMPLES:
         return "-"
     if abs(b / a - 1) < NOISE:
         return "same"

@@ -107,11 +107,13 @@ both routes holds at 4 parallel requests.
   host, the network path and the window differ. Compare the ratios only.
 - The phase `prefill` uses `max_tokens=24`. On CommandCode the model spent all 24 tokens on the
   reasoning, so the response holds no visible token and the value `ttft_content_ms` is absent on
-  that side. On OpenCode the answer held 2 content tokens, so its rate of 104712 tokens/s is an
-  artefact of a tiny numerator and the command `report` does not print it. The value
-  `ttft_any_ms` is correct on both sides.
-- The value `tok_per_s_visible` has no meaning for an answer of 3 tokens, because the result is
-  a large number. Read it for long answers only.
+  that side. On OpenCode the answer held 2 content tokens, so the record holds a rate of 104712
+  tokens/s that the tool does not print: a rate needs an answer of 50 output tokens behind it.
+  The value `ttft_any_ms` is correct on both sides.
+- A rate needs a numerator. The tool prints no rate for a phase whose median answer holds fewer
+  than 50 output tokens or fewer than 10 content tokens, so the `short` and `prefill` phases of
+  this campaign hold no rate at all, and `thinking_enabled` and `thinking_effort_low` hold none
+  of `tok_per_s_visible`. Read a rate for long answers only.
 - The campaign did not test retries, tool calls, or streaming with tools.
 
 ## Raw data in this directory

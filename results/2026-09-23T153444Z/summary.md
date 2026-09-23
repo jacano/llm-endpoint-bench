@@ -35,9 +35,9 @@ The table gives the median value of each measurement.
 | TPS of the visible content | 438.9 tokens/s | 276.1 tokens/s | 0.63 |
 | TTFT with 18037 input tokens | 1235.6 ms | 1701.7 ms | 1.38 times |
 | 4 parallel requests: rate of one request | 379.6 tokens/s | 233.8 tokens/s | 0.62 |
-| 4 parallel requests: total rate | 808.6 tokens/s and 1.11 requests/s | 577.3 tokens/s and 0.57 requests/s | 1.40 times |
+| 4 parallel requests: total rate | 808.6 tokens/s and 1.11 requests/s | 577.3 tokens/s and 0.57 requests/s | 0.71 |
 
-The ratios below 1 belong to TPS, where a large number is better. CommandCode is faster on
+The ratios below 1 belong to a rate, where a large number is better. CommandCode is faster on
 every measurement.
 
 ## The conclusion does not depend on the host
@@ -91,8 +91,8 @@ The TPS of the sustained decoding is again about 1.6 times lower on OpenCode
   sides.
 - The value `tok_per_s_visible` has no meaning for an answer of 3 tokens, because the result
   is a large number. The tool prints neither rate for a phase whose median answer holds fewer
-  than 10 output tokens or fewer than 10 content tokens, so the `short` phase of this campaign
-  holds no value of `tok_per_s_visible`. Read a rate for long answers only.
+  than 50 output tokens or fewer than 10 content tokens, so the `short` and `prefill` phases of
+  this campaign hold no rate. Read a rate for long answers only.
 - The campaign did not test retries, tool calls, or streaming with tools.
 
 ## Raw data in this directory

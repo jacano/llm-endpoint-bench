@@ -18,12 +18,14 @@ CommandCode is faster than OpenCode (Go) on every measurement. The table gives t
 | Short answer: total time | 1046 ms | 1792 ms | 1.71 times |
 | Long answer of 620 tokens: TTFT of the first visible token | 1511 ms | 3033 ms | 2.01 times |
 | Long answer of 620 tokens: total time | 2673 ms | 4948 ms | 1.85 times |
-| TPS of the sustained decoding | 360 tokens/s | 230 tokens/s | 1.56 times |
-| TPS of the visible content | 439 tokens/s | 260 tokens/s | 1.69 times |
+| TPS of the sustained decoding | 360 tokens/s | 230 tokens/s | 0.64 |
+| TPS of the visible content | 439 tokens/s | 260 tokens/s | 0.59 |
 | TTFT with 18000 input tokens | 1671 ms | 3774 ms | 2.26 times |
-| 4 parallel requests: rate of one request | 378 tokens/s | 233 tokens/s | 1.63 times |
-| 4 parallel requests: total rate | 947 tokens/s | 476 tokens/s | 2.0 times |
-| 4 parallel requests: requests each second | 1.66 | 0.81 | 2.0 times |
+| 4 parallel requests: rate of one request | 378 tokens/s | 233 tokens/s | 0.62 |
+| 4 parallel requests: total rate | 947 tokens/s | 476 tokens/s | 0.50 |
+| 4 parallel requests: requests each second | 1.66 | 0.81 | 0.49 |
+
+A ratio above 1 belongs to a delay; a ratio below 1 belongs to a rate, where a large number is better.
 
 Both routes serve the same model, so the infrastructure makes the difference. The gateway of OpenCode adds about 245 ms to each request with a ready socket, which is about 13 times the cost of CommandCode. OpenCode also decodes 1.6 times slower in the steady state.
 
@@ -39,7 +41,9 @@ The same A/B test ran again on a Windows 11 host through another network path. T
 | Short answer: TTFT of the first token | 844.0 ms | 1474.4 ms | 1.75 times |
 | Long answer of 500 visible tokens: TTFT of the first visible token | 1204.1 ms | 2843.3 ms | 2.36 times |
 | TPS of the sustained decoding | 378.0 tokens/s | 234.1 tokens/s | 0.62 |
-| 4 parallel requests: total rate | 808.6 tokens/s | 577.3 tokens/s | 1.40 times |
+| 4 parallel requests: total rate | 808.6 tokens/s | 577.3 tokens/s | 0.71 |
+
+A ratio below 1 belongs to a rate, where a large number is better.
 
 The conclusion does not depend on the host: CommandCode is faster on every measurement in both campaigns.
 
@@ -80,7 +84,7 @@ Run `python3 bench.py list` to print this table from the code.
 6. Run `python3 bench.py run --endpoint commandcode --phases thinking`. The command sends one long answer under each reasoning control, so it shows whether the route honours them.
 7. Run `python3 bench.py ab --a commandcode --b opencode-go`. The command alternates the two endpoints, so the load of the provider hits both sides in the same way.
 8. Run `python3 bench.py report results/2026-09-23T150937Z/ab_opencode-go_20260923.json`. The command prints the time of the run, the median, the minimum, and the maximum of each measurement.
-9. Run `python3 bench.py compare results/2026-09-23T153444Z`. The command compares the two sides of the last run in that directory and prints one markdown table that holds the median of each metric of the two files, the quotient and the name of the faster endpoint. Name two files in place of the directory for any other pair. Paste the table into a summary.
+9. Run `python3 bench.py compare results/2026-09-23T153444Z`. The command compares the two sides of the last run in that directory and prints one markdown table that holds the median of each metric of the two files, the quotient, the number of samples of each side and the name of the faster endpoint. The column `Better` stays empty for a count, for a difference below 10 percent, and for a phase with fewer than 3 samples on a side. Name two files in place of the directory for any other pair. Paste the table into a summary.
 
 The command of the full campaign, as it ran for the summaries in `results/`:
 
@@ -151,7 +155,7 @@ Hermes Agent has a provider profile for each endpoint. Set `model.provider` to `
 - `ttft_content_ms` is the delay before the first visible token. The difference between this value and `ttft_any_ms` is the delay that a user sees as a slow start.
 - `tok_per_s_total` is `completion_tokens` divided by the time between the first delta and the last delta. The value includes the reasoning tokens.
 - `tok_per_s_visible` is the number of content tokens divided by the time of the content phase.
-- A rate needs a numerator. The tool prints neither rate for a phase whose median answer holds fewer than 10 output tokens (`tok_per_s_total`) or fewer than 10 content tokens (`tok_per_s_visible`): a rate over 2 or 3 tokens is a large number without meaning. The command `report` skips that line, and `compare` hides it when either side falls below the number.
+- A rate needs a numerator. The tool prints neither rate for a phase whose median answer holds fewer than 50 output tokens (`tok_per_s_total`) or fewer than 10 content tokens (`tok_per_s_visible`): the window of a short answer is an edge of that answer, not a rate of decoding. The command `report` skips that line, and `compare` hides it when either side falls below the number.
 - `models_reuse.ttfb_ms` is the TTFB with a ready socket. The value is the fixed cost of the gateway for each request.
 - `models_body.n_ids` is the number of model ids of the route, and `models_body.target_present` says whether the model of this endpoint is one of them.
 - `concurrent_summary.aggregate_tok_per_s` is the number of tokens of all requests divided by the wall clock time.
