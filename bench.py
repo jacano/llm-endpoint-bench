@@ -42,9 +42,9 @@ Any other OpenAI-compatible endpoint:
     python bench.py run --base-url https://api.example.com/v1 --model vendor/model \
         --key-env EXAMPLE_API_KEY --session-header --tag example
 
-Keys are read from the environment, falling back to ~/.hermes/.env and, on Windows,
-to %LOCALAPPDATA%/hermes/.env (names only are ever printed). Nothing in this repo
-contains a credential.
+Keys are read from the environment, then from a `.env` file beside the tool, then from the
+profile of the Hermes Agent desktop app when the machine holds one (names only are ever
+printed). Nothing in this repo contains a credential.
 """
 from __future__ import annotations
 
@@ -62,16 +62,19 @@ import uuid
 
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
-#: Where the keys may live. The first file that exists wins; names only are printed.
-ENV_FILES = [
-    os.path.expanduser("~/.hermes/.env"),
-    # Hermes Agent on Windows keeps its profile under LOCALAPPDATA.
-    os.path.join(os.environ.get("LOCALAPPDATA", ""), "hermes", ".env"),
-]
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(HERE, "results")
 #: curl is a native program: on Windows it reads `NUL`, not the MSYS mount `/dev/null`.
 NULL = "NUL" if os.name == "nt" else "/dev/null"
+#: Where a key may live, after the environment. The first file that defines a key wins; names
+#: only are ever printed. A `.env` beside the tool carries the key of whatever endpoint you use,
+#: and it is already in .gitignore. The two paths below it are only a convenience for a
+#: machine where the Hermes Agent desktop app holds the keys.
+ENV_FILES = [
+    os.path.join(HERE, ".env"),
+    os.path.expanduser("~/.hermes/.env"),
+    os.path.join(os.environ.get("LOCALAPPDATA", ""), "hermes", ".env"),
+]
 
 
 def default_out_dir() -> str:
@@ -659,8 +662,8 @@ def cmd_run(args) -> None:
     if args.tag:
         ep["name"] = args.tag
     if not ep["key"]:
-        sys.exit("no API key for %s: set %s in the environment or ~/.hermes/.env"
-                 % (ep["name"], ep["key_env"]))
+        sys.exit("no API key for %s: set %s in the environment, or in a .env file beside the "
+                 "tool" % (ep["name"], ep["key_env"]))
     phases = args.phases.split(",")
     print("endpoint=%s model=%s phases=%s" % (ep["name"], ep["model"], phases))
     recs = run_phases(ep, phases, args.concurrent)

@@ -16,7 +16,7 @@ Three campaigns measured this: the first on macOS, then the same A/B test twice 
 
 You need `python3` and `curl`. The tool uses the standard library of Python only. The tool runs on Linux, macOS and Windows. On Windows, use `python` in place of `python3`, and run the commands from Git Bash, because the tool writes the body of a request with `--data-binary @-`.
 
-The tool reads a key from the environment first. If the variable is absent, the tool reads the key from the file `~/.hermes/.env`, and on Windows also from `%LOCALAPPDATA%\hermes\.env`. The tool prints the name of a variable only, never the value.
+The tool reads a key from the environment first. If the variable is absent, the tool reads the key from a `.env` file in the directory of the tool, which is already in `.gitignore`. On a machine where the Hermes Agent desktop app holds the keys, the tool also reads the `.env` of its profile, `~/.hermes/.env` or `%LOCALAPPDATA%\hermes\.env`: that is the only tie between the two programs. The tool prints the name of a variable only, never the value, and nothing in this repository holds a credential.
 
 | Endpoint name | Base URL | Variable of the key | Extra header |
 |---|---|---|---|
@@ -84,10 +84,6 @@ curl -sS https://opencode.ai/zen/go/v1/chat/completions \
 ```
 
 The identifier of the model is different on each route. CommandCode uses the prefix of the provider, as in `deepseek/deepseek-v4.1-flash`. OpenCode uses the plain identifier, as in `deepseek-v4.1-flash`. Run `curl <base_url>/models` to list the identifiers of a route. The route `/models` of CommandCode is public.
-
-## Use with Hermes Agent
-
-Hermes Agent has a provider profile for each endpoint. Set `model.provider` to `commandcode` with `COMMANDCODE_API_KEY`, or to `opencode-go` (alias `go`) with `OPENCODE_GO_API_KEY`.
 
 ## Phases of the tool
 
