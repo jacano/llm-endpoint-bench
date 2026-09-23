@@ -103,4 +103,4 @@ The TPS of the sustained decoding is again about 1.6 times lower on OpenCode
 | `ab_commandcode_20260923T153444Z.json` | 2026-09-23T15:34:44Z | The Windows A/B test, CommandCode side, with 48 records in the `{meta, records}` format. |
 | `ab_opencode-go_20260923T153444Z.json` | 2026-09-23T15:34:44Z | The Windows A/B test, OpenCode (Go) side, with 48 records in the `{meta, records}` format. |
 
-Both files carry the same time, because one command `bench.py ab` wrote the two sides together. The campaign of macOS is in the directory `../2026-09-23-macos/`. Its `summary.md` holds the full characterization of the model.
+Both files carry the same time, because one command `bench.py ab` wrote the two sides together. The campaign of macOS is in the directory `../2026-09-23T150937Z/`. Its `summary.md` holds the full characterization of the model.

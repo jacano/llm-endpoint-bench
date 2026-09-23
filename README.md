@@ -31,7 +31,7 @@ OpenCode (Go) has one extra requirement. The header `x-opencode-session` is mand
 
 ## Results of the second campaign (Windows 11)
 
-The same A/B test ran again on a Windows 11 host through another network path. The absolute values differ, but the ratios agree with the first campaign. The full tables are in `results/2026-09-23-windows/summary.md`.
+The same A/B test ran again on a Windows 11 host through another network path. The absolute values differ, but the ratios agree with the first campaign. The full tables are in `results/2026-09-23T153444Z/summary.md`.
 
 | Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
 |---|---|---|---|
@@ -65,8 +65,8 @@ Run `python3 bench.py list` to print this table from the code.
 5. Run `python3 bench.py run --endpoint commandcode --phases concurrent --concurrent 4`. The command measures 4 requests in parallel.
 6. Run `python3 bench.py run --endpoint commandcode --phases thinking`. The command sends one long answer under each reasoning control, so it shows whether the route honours them.
 7. Run `python3 bench.py ab --a commandcode --b opencode-go`. The command alternates the two endpoints, so the load of the provider hits both sides in the same way.
-8. Run `python3 bench.py report results/2026-09-23-macos/ab_opencode-go_20260923.json`. The command prints the time of the run, the median, the minimum, and the maximum of each measurement.
-9. Run `python3 bench.py compare results/2026-09-23-windows`. The command compares the two sides of the last run in that directory and prints one markdown table that holds the median of each metric of the two files, the quotient and the name of the faster endpoint. Name two files in place of the directory for any other pair. Paste the table into a summary.
+8. Run `python3 bench.py report results/2026-09-23T150937Z/ab_opencode-go_20260923.json`. The command prints the time of the run, the median, the minimum, and the maximum of each measurement.
+9. Run `python3 bench.py compare results/2026-09-23T153444Z`. The command compares the two sides of the last run in that directory and prints one markdown table that holds the median of each metric of the two files, the quotient and the name of the faster endpoint. Name two files in place of the directory for any other pair. Paste the table into a summary.
 
 The command of the full campaign, as it ran for the summaries in `results/`:
 
@@ -75,7 +75,7 @@ python3 bench.py ab --a commandcode --b opencode-go \
   --phases transport,short,long,prefill,thinking,concurrent --n 4 --concurrent 4
 ```
 
-Each run writes its files into a new directory that is named for the time of the run, as in `results/2026-09-23T161050Z-windows/`, so a second run of the same day cannot mix with the first one. The option `--out-dir` puts the files of more than one command in one directory, as the first two campaigns in `results/` do. A file holds a `meta` block and the raw records, and its name and its `meta` block both hold the time of the run, as in `ab_commandcode_20260923T153444Z.json`. `results/README.md` is the index of the campaigns and states the format of a file. The commands `report` and `compare` print the time and the host of each file, and both of them take a directory as well as a file.
+Each run writes its files into a new directory that is named for the time of the run, as in `results/2026-09-23T161050Z/`, so a second run of the same day cannot mix with the first one. The name of the directory holds the time and nothing else; the host is in the `meta` block of each file and in the index `results/README.md`. The option `--out-dir` puts the files of more than one command in one directory, as the two campaigns in `results/` do. A file holds a `meta` block and the raw records, and its name and its `meta` block both hold the time of the run, as in `ab_commandcode_20260923T153444Z.json`. `results/README.md` is the index of the campaigns and states the format of a file. The commands `report` and `compare` print the time and the host of each file, and both of them take a directory as well as a file.
 
 ## How to measure another endpoint
 

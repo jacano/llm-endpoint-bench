@@ -73,4 +73,4 @@ The findings below apply to both endpoints.
 | `bench_py_example_commandcode_20260923T150937Z.json` | 2026-09-23T15:09:37Z | An example of the output of `bench.py run`, with 19 records in the `{meta, records}` format. |
 | `<endpoint>_<UTC>.json` | the time in the name | The output of `bench.py run`, in the `{meta, records}` format. |
 
-The scripts of this session wrote the first four files, so their time of the day is not recorded. The campaign of Windows 11 is in the directory `../2026-09-23-windows/`.
+The scripts of this session wrote the first four files, so their time of the day is not recorded. The campaign of Windows 11 is in the directory `../2026-09-23T153444Z/`.

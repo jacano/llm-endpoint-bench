@@ -24,13 +24,15 @@ Examples
     python bench.py run --endpoint commandcode
     python bench.py run --endpoint opencode-go --phases short,long
     python bench.py ab --a commandcode --b opencode-go          # interleaved A/B
-    python bench.py report results/2026-09-23-macos/ab_opencode-go_20260923.json
-    python bench.py compare results/2026-09-23-windows/ab_commandcode_20260923T153444Z.json \
-        results/2026-09-23-windows/ab_opencode-go_20260923T153444Z.json
+    python bench.py report results/2026-09-23T150937Z/ab_opencode-go_20260923.json
+    python bench.py compare results/2026-09-23T153444Z/ab_commandcode_20260923T153444Z.json \
+        results/2026-09-23T153444Z/ab_opencode-go_20260923T153444Z.json
 
-Each run writes its files into a new directory `results/<date>T<time>Z-<os>/`, so a second run
-of the same day cannot mix with the first one. Give --out-dir to put the files of several
-commands in one directory of a campaign, as in results/2026-09-23-windows/. The name of a file
+Each run writes its files into a new directory `results/<date>T<time>Z/`, the time of the run in
+UTC, so a second run of the same day cannot mix with the first one. The name of the directory
+holds no other fact: the host and the operating system are in the `meta` block of each file.
+Give --out-dir to put the files of several commands in one directory of a campaign, as in
+results/2026-09-23T153444Z/. The name of a file
 is <endpoint>_<UTC>.json, and ab_<endpoint>_<UTC>.json for a side of an A/B test: the time of
 the run stays in the name of the file and in its `meta` block. The commands `report` and
 `compare` print that time, and both accept a directory: `report` on a directory reports every
@@ -71,20 +73,18 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(HERE, "results")
 #: curl is a native program: on Windows it reads `NUL`, not the MSYS mount `/dev/null`.
 NULL = "NUL" if os.name == "nt" else "/dev/null"
-#: The name of the operating system in a directory name.
-OS_NAMES = {"Windows": "windows", "Darwin": "macos", "Linux": "linux"}
 
 
 def default_out_dir() -> str:
-    """The directory of this run: results/<date>T<time>Z-<os>/.
+    """The directory of this run: results/<date>T<time>Z/.
 
     The time in the name keeps the files of two runs apart, so a second run of
-    the same day cannot mix with the first one. Give --out-dir to put the files
-    of more than one command in one directory of a campaign.
+    the same day cannot mix with the first one. The name holds no other fact:
+    the host, the operating system and the endpoint are in the `meta` block of
+    each file. Give --out-dir to put the files of more than one command in one
+    directory of a campaign.
     """
-    stamp = time.strftime("%Y-%m-%dT%H%M%SZ", time.gmtime())
-    os_name = OS_NAMES.get(platform.system(), platform.system().lower()) or "unknown"
-    return os.path.join(RESULTS, "%s-%s" % (stamp, os_name))
+    return os.path.join(RESULTS, time.strftime("%Y-%m-%dT%H%M%SZ", time.gmtime()))
 
 PROMPT_SHORT = "Reply with exactly: pong"
 PROMPT_LONG = "List the integers from 1 to 250, one per line, no other text."
@@ -662,7 +662,7 @@ def main() -> None:
                    help="csv of: %s" % ",".join(PHASES))
     r.add_argument("--concurrent", type=int, default=4, help="parallel requests for `concurrent`")
     r.add_argument("--out-dir", help="directory of the result file (default: one directory "
-                                     "for each run, results/<date>T<time>Z-<os>/)")
+                                     "for each run, results/<date>T<time>Z/)")
     r.set_defaults(func=cmd_run)
 
     a = sub.add_parser("ab", help="interleaved A/B between two endpoints")
@@ -672,7 +672,7 @@ def main() -> None:
     a.add_argument("--n", type=int, default=4, help="rounds for short/long")
     a.add_argument("--concurrent", type=int, default=4)
     a.add_argument("--out-dir", help="directory of the result files (default: one directory "
-                                     "for each run, results/<date>T<time>Z-<os>/)")
+                                     "for each run, results/<date>T<time>Z/)")
     a.set_defaults(func=cmd_ab)
 
     p = sub.add_parser("report", help="aggregate a results file, or each file of a directory")
