@@ -7,11 +7,11 @@ the standard library of Python only.
 
 ## Results
 
-CommandCode is faster than OpenCode (Go) on every measurement of every campaign. The gateway of
+CommandCode is faster than OpenCode (Go) on every measurement of every round. The gateway of
 OpenCode adds 250 to 325 ms to each request with a ready socket, nine to twenty times the cost of
 CommandCode, and OpenCode decodes about 1.6 times slower in the steady state.
 
-Three campaigns measured this on one Windows 11 host, twenty minutes to four hours apart. Their
+Four rounds measured this on one Windows 11 host, twenty minutes to four hours apart. Their
 tables, the analysis of the differences and the limits of the measurements are in `ANALYSIS.md`;
 the raw records are in `results/`, and `results/README.md` indexes them.
 
@@ -47,7 +47,7 @@ python bench.py compare results/2026-09-23T210256Z           # the two sides of 
 `--n` is the number of rounds of the `short` and `long` phases (5 and 4 requests each). It prints
 one line for each request as it arrives. Files land in a new directory named for the time of the
 run in UTC, `results/<date>T<time>Z/`, so a second run of the same day cannot mix with the first
-one; `--out-dir` puts the files of several commands in one directory of a campaign. `run
+one; `--out-dir` puts the files of several commands in one directory of a round. `run
 --endpoint NAME` measures one route on its own.
 
 ## Phases
@@ -75,9 +75,9 @@ one; `--out-dir` puts the files of several commands in one directory of a campai
 
 ```
 bench.py                  the runner: the phases, the A/B runner, the report, the comparison.
-ANALYSIS.md               the analysis of the results of the campaigns.
-results/                  one directory for each campaign, with its summary and its records.
-results/README.md         the index of the campaigns and the format of a result file.
+ANALYSIS.md               the analysis of the results of the rounds.
+results/                  one directory for each round, with its summary and its records.
+results/README.md         the index of the rounds and the format of a result file.
 ```
 
 `bench.py` is the only source file. The first version of each tool is in the history of the

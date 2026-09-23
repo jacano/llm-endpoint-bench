@@ -1,21 +1,21 @@
 # The analysis of the results
 
-Four campaigns measured the same model, `deepseek-v4.1-flash`, on two routes, CommandCode and
-OpenCode (Go), on one Windows 11 host, in four windows between 15:34Z and 21:23Z on 2026-09-23.
-This file holds their tables, what the differences come from, what holds between the windows, and
+Four rounds measured the same model, `deepseek-v4.1-flash`, on two routes, CommandCode and
+OpenCode (Go), on one Windows 11 host, between 15:34Z and 21:23Z on 2026-09-23.
+This file holds their tables, what the differences come from, what holds between the rounds, and
 the limits of the measurements.
 
-The raw records and the full tables of each campaign are in `results/`, which `results/README.md`
+The raw records and the full tables of each round are in `results/`, which `results/README.md`
 indexes:
 
-- `results/2026-09-23T153444Z/` — the first window.
-- `results/2026-09-23T204204Z/` — the second window, four hours later.
-- `results/2026-09-23T210256Z/` — the third window, twenty minutes after the second one.
-- `results/2026-09-23T212350Z/` — the fourth window, twenty-one minutes after the third one.
+- `results/2026-09-23T153444Z/` — the first round.
+- `results/2026-09-23T204204Z/` — the second round, four hours later.
+- `results/2026-09-23T210256Z/` — the third round, twenty minutes after the second one.
+- `results/2026-09-23T212350Z/` — the fourth round, twenty-one minutes after the third one.
 
 The tool that produced them is `bench.py`; the README states it.
 
-## The first window (15:34Z)
+## The first round (15:34Z)
 
 CommandCode is faster than OpenCode (Go) on every measurement. The table gives the median value of
 each measurement: TTFB is the delay before the response starts, and TTFT the delay before the
@@ -37,7 +37,7 @@ model writes the first token. The full tables are in `results/2026-09-23T153444Z
 Every ratio is how many times faster CommandCode was, so a larger number is always a larger
 gain for CommandCode, on a delay and on a rate alike.
 
-## The second window (20:42Z)
+## The second round (20:42Z)
 
 The same A/B test ran again on the same host, four hours later. Every difference points the same
 way; the size of a difference moves with the queue of the provider. The full tables are in
@@ -55,11 +55,11 @@ way; the size of a difference moves with the queue of the provider. The full tab
 | 4 parallel requests: rate of one request | 377.6 tokens/s | 239.7 tokens/s | 1.59 |
 | 4 parallel requests: total rate | 799.7 tokens/s | 478.8 tokens/s | 1.67 |
 
-## The third window (21:02Z)
+## The third round (21:02Z)
 
-The same A/B test ran a third time on the same host, twenty minutes after the second window. Every
+The same A/B test ran a third time on the same host, twenty minutes after the second round. Every
 difference points the same way, and the delays of the model itself stayed inside the range of the
-windows before it. The full tables are in `results/2026-09-23T210256Z/summary.md`.
+rounds before it. The full tables are in `results/2026-09-23T210256Z/summary.md`.
 
 | Measurement | CommandCode | OpenCode (Go) | CommandCode is faster by |
 |---|---|---|---|
@@ -73,11 +73,11 @@ windows before it. The full tables are in `results/2026-09-23T210256Z/summary.md
 | 4 parallel requests: rate of one request | 360.5 tokens/s | 217.7 tokens/s | 1.67 |
 | 4 parallel requests: total rate | 866.2 tokens/s | 429.5 tokens/s | 2.00 |
 
-## The fourth window (21:23Z)
+## The fourth round (21:23Z)
 
-The same A/B test ran a fourth time on the same host, twenty-one minutes after the third window.
+The same A/B test ran a fourth time on the same host, twenty-one minutes after the third round.
 Every difference points the same way. The two answers of the `long` phase differed in length more
-than in any window before, and the paragraph after the table states what that does to the rates of
+than in any round before, and the paragraph after the table states what that does to the rates of
 that phase. The full tables are in `results/2026-09-23T212350Z/summary.md`.
 
 | Measurement | CommandCode | OpenCode (Go) | CommandCode is faster by |
@@ -94,14 +94,14 @@ that phase. The full tables are in `results/2026-09-23T212350Z/summary.md`.
 | 4 parallel requests: total rate | 901.8 tokens/s | 423.9 tokens/s | 2.13 |
 
 The sustained decoding of a whole answer is where CommandCode gained least, 1.39 times, the lowest
-of the four windows, because
+of the four rounds, because
 CommandCode wrote 684 output tokens for its long answer where OpenCode wrote 569: the numerator of
 that rate grew by a fifth, and the extra tokens are mostly reasoning. The two answers held the
 same visible content, 500 tokens against 499, and there CommandCode wrote 1.54 times faster.
 
-## What holds between the windows
+## What holds between the rounds
 
-The direction of every difference is the same in all four windows. The size of a difference moves
+The direction of every difference is the same in all four rounds. The size of a difference moves
 with the queue of the provider, and two families of measurement move differently.
 
 | CommandCode is faster by | 15:34 | 20:42 | 21:02 | 21:23 |
@@ -118,37 +118,36 @@ with the queue of the provider, and two families of measurement move differently
   them: 1.59, 1.69, 1.64 and 1.54. One request under 4 parallel requests gives 1.61, 1.59, 1.67 and
   1.52.
 - The sustained decoding of a whole answer moved further than the others, from 1.61 to 1.39, and the
-  fourth window shows the cause. That measurement divides the output tokens of an answer by
+  fourth round shows the cause. That measurement divides the output tokens of an answer by
   the time of its generation, and the two `long` answers differed by a fifth in output tokens: 684
   on CommandCode against 569 on OpenCode, because CommandCode spent more of them on reasoning, 184
   against 70. The larger numerator lifts that rate. The visible content of the same two answers
   matched, 500 tokens against 499, and there the gain moved least of all.
-- The ratios of the delays moved further in the fourth window than in the others: the gap in the
-  TTFT of a short answer went from 1.75 to 2.42 across the four windows, and the gap in the long
+- The ratios of the delays moved further in the fourth round than in the others: the gap in the
+  TTFT of a short answer went from 1.75 to 2.42 across the four rounds, and the gap in the long
   answer fell from 2.36 to 1.22, where the two routes came closest. Both sides moved in that
-  window, and a fixed cost of the gateway plus a varying queue explains both.
+  round, and a fixed cost of the gateway plus a varying queue explains both.
 - The row of the reused socket is the least stable of the table, 9.11 to 20.58, and the fourth
-  window landed near the low end of that range, 10.95. Read a row of this kind as the cost of the
+  round landed near the low end of that range, 10.95. Read a row of this kind as the cost of the
   gateway at a moment, not as a property of the route.
 - The gateway overhead of OpenCode is stable in absolute terms: 250.7 ms, 291.6 ms, 325.2 ms and
   296.8 ms with a ready socket, against 21.3 ms, 32.0 ms, 15.8 ms and 27.1 ms on CommandCode.
 - 4 parallel requests do not lower the rate of one request on either route in any of the four
-  windows. The worst case is OpenCode in the fourth window, 243.6 tokens/s against the 260.3 of one
+  rounds. The worst case is OpenCode in the fourth round, 243.6 tokens/s against the 260.3 of one
   request, a fall of 6 percent. The aggregate rate stays between 1.7 and 2.5 times the rate of one
   request, so the bottleneck of both routes holds at 4 parallel requests.
-- The model always reasons before it answers, in every window: the prompt `Reply with exactly:
-  pong` spends 14 reasoning tokens for a visible answer of 3 tokens in the fourth window, and about
-  the same in the windows before it.
+- The model always reasons before it answers, in every round: the prompt `Reply with exactly:
+  pong` spends 14 reasoning tokens for a visible answer of 3 tokens in the fourth round, and about
+  the same in the rounds before it.
 
 ## Limits
 
-Each campaign ran for about 10 minutes on one machine. Each measurement has 1 to 20 samples, and
+Each round ran for about 10 minutes on one machine. Each measurement has 1 to 20 samples, and
 the table of a comparison prints the number of samples of each side, so a phase of one sample shows
 a ratio without a verdict. A difference below 10 percent is noise. The queue of the provider
-changes between windows: the TTFT of one endpoint went from 620 ms to 2660 ms for the same prompt.
-The absolute values of two campaigns are not comparable, because the host, the network path and the
-window differ; compare the ratios only. The campaign did not test retries, tool calls, or streaming
+changes between rounds: the TTFT of one endpoint went from 620 ms to 2660 ms for the same prompt.
+The absolute values of two rounds are not comparable, because the host, the network path and the hour differ; compare the ratios only. The round did not test retries, tool calls, or streaming
 with tools. A measurement becomes stale, so measure again before you change a route or a budget.
 
-The `summary.md` of each campaign states the limits of that campaign, including the phases of it
+The `summary.md` of each round states the limits of that round, including the phases of it
 that hold too few tokens for a rate.

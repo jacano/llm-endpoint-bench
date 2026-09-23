@@ -24,7 +24,7 @@ Examples
 To measure another route, add it to ENDPOINTS: the set of endpoints is data, and every command
 reads it. Each run writes its files into a new directory `results/<date>T<time>Z/`, named for
 the UTC time of the run, so a second run of the same day cannot mix with the first one. Give
---out-dir to put the files of several commands in one directory of a campaign. `report` and
+--out-dir to put the files of several commands in one directory of a round. `report` and
 `compare` accept a directory as well as a file, and results/README.md states the layout.
 
 Keys are read from the environment, then from a `.env` file beside the tool, then from the
@@ -69,7 +69,7 @@ def default_out_dir() -> str:
     the same day cannot mix with the first one. The name holds no other fact:
     the host, the operating system and the endpoint are in the `meta` block of
     each file. Give --out-dir to put the files of more than one command in one
-    directory of a campaign.
+    directory of a round.
     """
     return os.path.join(RESULTS, time.strftime("%Y-%m-%dT%H%M%SZ", time.gmtime()))
 
@@ -78,7 +78,7 @@ PROMPT_LONG = "List the integers from 1 to 250, one per line, no other text."
 #: Parallel long answers of the phase `concurrent`. One value, so no option for it.
 CONCURRENT = 4
 #: The floor of the numerator of each rate, with the words for it. Below the floor the
-#: window is an edge of a short answer rather than a rate of decoding. `tok_per_s_total`
+#: rate measures the edge of a short answer rather than decoding. `tok_per_s_total`
 #: spans the reasoning as well as the content, so it needs a longer answer behind it.
 MIN_CONTENT_TOKENS = 10
 MIN_OUTPUT_TOKENS = 50

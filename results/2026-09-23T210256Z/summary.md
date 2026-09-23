@@ -12,8 +12,8 @@ names it `deepseek-v4.1-flash`.
   20, 16 and 4 samples for a side, plus the concurrent summary.
 - The tool reads each token count from the `usage` block of the response.
 
-This is the third window on this host. It repeats the A/B test of the runs of 15:34:44Z and
-20:42:04Z on the same machine, twenty minutes after the second of them, in another window of the
+This is the third round on this host. It repeats the A/B test of the runs of 15:34:44Z and
+20:42:04Z on the same machine, twenty minutes after the second of them, in another round of the
 provider. The command was:
 
 ```
@@ -46,7 +46,7 @@ every measurement.
 ## The ratios hold, the absolute values move
 
 The same test has now run three times on this host. The direction of every difference is the same
-in all three windows, and the size of a difference moves with the queue of the provider.
+in all three rounds, and the size of a difference moves with the queue of the provider.
 
 | Measurement: OpenCode divided by CommandCode | 2026-09-23T153444Z | 2026-09-23T204204Z | 2026-09-23T210256Z |
 |---|---|---|---|
@@ -57,15 +57,15 @@ in all three windows, and the size of a difference moves with the queue of the p
 | TPS of the sustained decoding | 0.62 | 0.63 | 0.66 |
 | 4 parallel requests: rate of one request | 0.62 | 0.63 | 0.60 |
 
-- The rate of the sustained decoding is the most stable value of the three windows: 0.62, 0.63
+- The rate of the sustained decoding is the most stable value of the three rounds: 0.62, 0.63
   and 0.66. The same holds for the rate of one request under 4 parallel requests: 0.62, 0.63 and
   0.60.
-- The ratio of the reused socket moved further than in any other window, and both sides caused it:
+- The ratio of the reused socket moved further than in any other round, and both sides caused it:
   the median TTFB of `/models` on a ready socket fell to 15.8 ms on CommandCode (21.3 ms and
-  32.0 ms in the two windows before) while it rose to 325.2 ms on OpenCode (250.7 ms and
+  32.0 ms in the two rounds before) while it rose to 325.2 ms on OpenCode (250.7 ms and
   291.6 ms). A row of this kind is worth less than a row of a rate: read it as the cost of the
   gateway at a moment, not as a property of the route.
-- The ratios of the delays of the model itself stayed inside the range of the other windows: the
+- The ratios of the delays of the model itself stayed inside the range of the other rounds: the
   short answer at 2.16 against 1.75 to 2.20, the long answer at 1.96 against 1.66 to 2.36.
 
 ## Cause of the difference
@@ -87,24 +87,24 @@ model about 1.5 times slower in the sustained decoding, on the same output: the 
 
 Four parallel requests do not lower the rate of one request on either route: the aggregate rate
 is about twice the rate of one request on both sides, which is the same finding as in the two
-windows before. The bottleneck of both routes holds at 4 parallel requests.
+rounds before. The bottleneck of both routes holds at 4 parallel requests.
 
 ## Limits
 
 - Each measurement has 1 to 20 samples, and the phases `models` and `concurrent` have 3 and 4
   samples for a side. A difference below 10 percent is noise. The comparison prints the number of
   samples of each side and names no winner for a phase of one sample.
-- The absolute values of this campaign are not comparable with those of another window, because
-  the host, the network path and the window differ. Compare the ratios only.
+- The absolute values of this round are not comparable with those of another round, because
+  the host, the network path and the hour differ. Compare the ratios only.
 - The absolute values of a ratio of a delay are not comparable between rows either: the row of
-  the reused socket is the least stable of the table, 9.11 to 20.58 over three windows. The rate
+  the reused socket is the least stable of the table, 9.11 to 20.58 over three rounds. The rate
   of the sustained decoding is the most stable, 0.62 to 0.66.
 - A rate needs a numerator. The tool prints no rate for a phase whose median answer holds fewer
-  than 50 output tokens or fewer than 10 content tokens, so the `short` phase of this campaign
+  than 50 output tokens or fewer than 10 content tokens, so the `short` phase of this round
   holds no rate. Read a rate for long answers only.
 - The number of model identifiers that a route lists is a count, not a score: CommandCode lists
-  80 and OpenCode lists 35 in this window.
-- The campaign did not test retries, tool calls, or streaming with tools.
+  80 and OpenCode lists 35 in this round.
+- The round did not test retries, tool calls, or streaming with tools.
 
 ## Raw data in this directory
 
@@ -114,5 +114,5 @@ windows before. The bottleneck of both routes holds at 4 parallel requests.
 | `ab_opencode-go_20260923T210256Z.json` | 2026-09-23T21:02:56Z | This A/B test, OpenCode (Go) side, with 48 records in the `{meta, records}` format. |
 
 Both files carry the same time, because one command `bench.py ab` wrote the two sides together.
-The other two windows of this host are in the directories `../2026-09-23T153444Z/` (the first) and
+The other two rounds of this host are in the directories `../2026-09-23T153444Z/` (the first) and
 `../2026-09-23T204204Z/` (the second).

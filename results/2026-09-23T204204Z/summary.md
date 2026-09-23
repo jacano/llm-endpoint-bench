@@ -12,8 +12,8 @@ names it `deepseek-v4.1-flash`.
   20, 16 and 4 samples for a side, plus the concurrent summary.
 - The tool reads each token count from the `usage` block of the response.
 
-This is the second window on this host. It repeats the A/B test of the run of 15:34:44Z on the
-same machine, four hours later, in a different window of the provider.
+This is the second round on this host. It repeats the A/B test of the run of 15:34:44Z on the
+same machine, four hours later, in a different round of the provider.
 
 ## Comparison of the two routes
 
@@ -52,8 +52,8 @@ every difference is the same; the size of a difference moves with the queue of t
 | TPS of the sustained decoding | 0.62 | 0.63 | 0.66 |
 | 4 parallel requests: rate of one request | 0.62 | 0.63 | 0.60 |
 
-The rate of the sustained decoding is the most stable value of the three windows: 0.62, 0.63 and
-0.66. The gap in the TTFT of a short answer moved from 1.75 to 2.20 between the two windows of
+The rate of the sustained decoding is the most stable value of the three rounds: 0.62, 0.63 and
+0.66. The gap in the TTFT of a short answer moved from 1.75 to 2.20 between the two rounds of
 this host, and the aggregate rate of 4 parallel requests moved from 0.71 to 0.50. Both values
 depend on the queue at the moment of the request.
 
@@ -81,12 +81,12 @@ both routes holds at 4 parallel requests.
 - Each measurement has 1 to 20 samples, and the phases `models` and `concurrent` have 3 and 4
   samples for a side. A difference below 10 percent is noise. The comparison prints the number of
   samples of each side and names no winner for a phase of one sample.
-- The absolute values of this campaign are not comparable with those of another window, because
-  the host, the network path and the window differ. Compare the ratios only.
+- The absolute values of this round are not comparable with those of another round, because
+  the host, the network path and the hour differ. Compare the ratios only.
 - A rate needs a numerator. The tool prints no rate for a phase whose median answer holds fewer
-  than 50 output tokens or fewer than 10 content tokens, so the `short` phase of this campaign
+  than 50 output tokens or fewer than 10 content tokens, so the `short` phase of this round
   holds no rate. Read a rate for long answers only.
-- The campaign did not test retries, tool calls, or streaming with tools.
+- The round did not test retries, tool calls, or streaming with tools.
 
 ## Raw data in this directory
 
@@ -96,5 +96,5 @@ both routes holds at 4 parallel requests.
 | `ab_opencode-go_20260923T204204Z.json` | 2026-09-23T20:42:04Z | This A/B test, OpenCode (Go) side, with 48 records in the `{meta, records}` format. |
 
 Both files carry the same time, because one command `bench.py ab` wrote the two sides together.
-The other two windows of this host are in the directories `../2026-09-23T153444Z/` (the first) and
+The other two rounds of this host are in the directories `../2026-09-23T153444Z/` (the first) and
 `../2026-09-23T210256Z/` (the third).

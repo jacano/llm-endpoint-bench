@@ -12,7 +12,7 @@ OpenCode names it `deepseek-v4.1-flash`.
   20, 16 and 4 samples for a side, plus the concurrent summary.
 - The tool reads each token count from the `usage` block of the response.
 
-Two more windows of this host followed this one, and the rates agree between the three while the
+Two more rounds of this host followed this one, and the rates agree between the three while the
 delays move. `ANALYSIS.md` holds the table of all three.
 
 ## Comparison of the two routes
@@ -47,7 +47,7 @@ the TLS connection adds 233.8 ms against 42.0 ms.
 The TPS of the sustained decoding is again about 1.6 times lower on OpenCode (234.1 tokens/s
 against 378.0 tokens/s). The gap in the TTFT of a short answer is 630 ms, or 1.75 times.
 
-## Findings of this window
+## Findings of this round
 
 - The gateway overhead of OpenCode is stable: 250.7 ms with a ready socket, against 21.3 ms on
   CommandCode.
@@ -65,13 +65,13 @@ against 378.0 tokens/s). The gap in the TTFT of a short answer is 630 ms, or 1.7
 
 - Each measurement has 1 to 20 samples, and the phases `models` and `concurrent` have 3 and 4
   samples for a side. A difference below 10 percent is noise.
-- The absolute values of this campaign are not comparable with those of another campaign,
-  because the host, the network path and the window differ. Compare the ratios only.
+- The absolute values of this round are not comparable with those of another round,
+  because the host, the network path and the hour differ. Compare the ratios only.
 - The value `tok_per_s_visible` has no meaning for an answer of 3 tokens, because the result
   is a large number. The tool prints neither rate for a phase whose median answer holds fewer
-  than 50 output tokens or fewer than 10 content tokens, so the `short` phase of this campaign
+  than 50 output tokens or fewer than 10 content tokens, so the `short` phase of this round
   holds no rate. Read a rate for long answers only.
-- The campaign did not test retries, tool calls, or streaming with tools.
+- The round did not test retries, tool calls, or streaming with tools.
 
 ## Raw data in this directory
 
@@ -81,5 +81,5 @@ against 378.0 tokens/s). The gap in the TTFT of a short answer is 630 ms, or 1.7
 | `ab_opencode-go_20260923T153444Z.json` | 2026-09-23T15:34:44Z | The A/B test, OpenCode (Go) side, with 47 records in the `{meta, records}` format. |
 
 Both files carry the same time, because one command `bench.py ab` wrote the two sides together.
-The two windows that followed this one are in the directories `../2026-09-23T204204Z/` and
+The two rounds that followed this one are in the directories `../2026-09-23T204204Z/` and
 `../2026-09-23T210256Z/`.
