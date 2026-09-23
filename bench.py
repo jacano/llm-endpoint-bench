@@ -21,6 +21,7 @@ Examples
     python bench.py run --endpoint opencode-go --phases short,long
     python bench.py ab --a commandcode --b opencode-go          # interleaved A/B
     python bench.py report results/commandcode_20260923T1520Z.json
+    python bench.py compare results/commandcode_<UTC>.json results/opencode-go_<UTC>.json
 
 Any other OpenAI-compatible endpoint:
     python bench.py run --base-url https://api.example.com/v1 --model vendor/model \
@@ -60,6 +61,8 @@ NULL = "NUL" if os.name == "nt" else "/dev/null"
 PROMPT_SHORT = "Reply with exactly: pong"
 PROMPT_LONG = "List the integers from 1 to 250, one per line, no other text."
 PREFILL_WORDS = 6000  # ~18k tokens of ASCII filler
+#: Below this number of content tokens, `tok_per_s_visible` is noise and is not reported.
+MIN_VISIBLE_TOKENS = 10
 
 #: Known endpoints. `deepseek-v4.1-flash` is the same model on both routes;
 #: only the id spelling and the transport differ.
@@ -364,13 +367,98 @@ def report(path: str) -> None:
             keys = ["ttft_any_ms", "ttft_content_ms", "total_ms", "in_tokens", "out_tokens",
                     "reasoning_tokens", "content_tokens", "tok_per_s_total", "tok_per_s_visible"]
         print("  %-18s n=%d" % (k, len(rows)))
+        small = med([r.get("content_tokens") for r in rows])
         for key in keys:
             vals = [r.get(key) for r in rows]
             m = med(vals)
             if m is None:
                 continue
+            if key == "tok_per_s_visible" and small is not None and small < MIN_VISIBLE_TOKENS:
+                # a rate over two or three tokens is a large number without meaning
+                print("      %-18s skipped: the answer holds fewer than %d content tokens"
+                      % (key, MIN_VISIBLE_TOKENS))
+                continue
             nums = [v for v in vals if isinstance(v, (int, float))]
             print("      %-18s median %-9s min %-9s max %-9s" % (key, m, round(min(nums), 1), round(max(nums), 1)))
+
+
+# ----------------------------------------------------------------- comparison
+
+#: Metrics where a low value is better. Every other metric is a rate.
+LOWER_IS_BETTER = {"dns_ms", "tcp_ms", "tls_ms", "ttfb_ms", "total_ms", "wall_s",
+                   "ttft_any_ms", "ttft_content_ms"}
+#: A difference below this fraction is noise (see Limits in the README).
+NOISE = 0.10
+
+COMPARE_METRICS = {
+    "models": ["dns_ms", "tcp_ms", "tls_ms", "ttfb_ms", "total_ms"],
+    "models_reuse": ["ttfb_ms"],
+    "concurrent_summary": ["wall_s", "out_tokens", "aggregate_tok_per_s", "request_per_s"],
+}
+COMPARE_DEFAULT = ["ttft_any_ms", "ttft_content_ms", "total_ms", "in_tokens", "out_tokens",
+                   "reasoning_tokens", "content_tokens", "tok_per_s_total", "tok_per_s_visible"]
+#: Metrics that are counts, not scores. The tool names no winner for them: more output
+#: tokens is not a better result, and a shorter wall clock with fewer tokens is not either.
+NO_VERDICT = {"in_tokens", "out_tokens", "reasoning_tokens", "content_tokens", "wall_s"}
+
+
+def metrics_for(kind: str) -> list[str]:
+    return COMPARE_METRICS.get(kind, COMPARE_DEFAULT)
+
+
+def compare(path_a: str, path_b: str, label_a: str | None = None, label_b: str | None = None,
+            kinds: list[str] | None = None) -> None:
+    """Print a markdown table of the median of each metric of two result files."""
+    ra = [r for r in load_records(path_a) if not r.get("error")]
+    rb = [r for r in load_records(path_b) if not r.get("error")]
+    la = str(label_a or (ra[0].get("endpoint") if ra else "A"))
+    lb = str(label_b or (rb[0].get("endpoint") if rb else "B"))
+    ks = kinds or sorted({str(r.get("kind")) for r in ra + rb if r.get("kind")})
+    print("%s (%d records)" % (path_a, len(ra)))
+    print("%s (%d records)" % (path_b, len(rb)))
+    print("")
+    print("| Kind | Metric | %s | %s | %s / %s | Better |" % (la, lb, lb, la))
+    print("|---|---|---|---|---|---|")
+    hidden = []
+    for kind in ks:
+        rows_a = [r for r in ra if r.get("kind") == kind]
+        rows_b = [r for r in rb if r.get("kind") == kind]
+        if not rows_a and not rows_b:
+            continue
+        small = med([r.get("content_tokens") for r in rows_a])
+        for key in metrics_for(kind):
+            a = med([r.get(key) for r in rows_a])
+            b = med([r.get(key) for r in rows_b])
+            if a is None and b is None:
+                continue
+            if key == "tok_per_s_visible" and small is not None and small < MIN_VISIBLE_TOKENS:
+                hidden.append(kind)
+                continue
+            ratio = round(b / a, 2) if (a and b) else None
+            print("| %s | %s | %s | %s | %s | %s |" % (kind, key, fmt(a), fmt(b), fmt(ratio),
+                                                       verdict(key, a, b, la, lb)))
+    if hidden:
+        print("")
+        print("`tok_per_s_visible` is not shown for %s: the median answer of the phase holds "
+              "fewer than %d content tokens." % (", ".join(sorted(set(hidden))), MIN_VISIBLE_TOKENS))
+    print("")
+    print("The column `%s / %s` is the value of %s divided by the value of %s. "
+          "A difference below %d percent shows `same`. The column `Better` stays empty for a "
+          "count, because a count is not a score." % (lb, la, lb, la, NOISE * 100))
+
+
+def verdict(key: str, a, b, label_a: str = "A", label_b: str = "B") -> str:
+    if key in NO_VERDICT or a is None or b is None or not a or not b:
+        return "-"
+    if abs(b / a - 1) < NOISE:
+        return "same"
+    if key in LOWER_IS_BETTER:
+        return label_a if a < b else label_b
+    return label_a if a > b else label_b
+
+
+def fmt(v) -> str:
+    return "-" if v is None else ("%g" % v)
 
 
 # ---------------------------------------------------------------------------- ab
@@ -442,6 +530,15 @@ def main() -> None:
     p = sub.add_parser("report", help="aggregate a results file")
     p.add_argument("files", nargs="+")
     p.set_defaults(func=lambda args: [report(f) for f in args.files])
+
+    c = sub.add_parser("compare", help="markdown table of two results files, side by side")
+    c.add_argument("a", help="results file of the first endpoint")
+    c.add_argument("b", help="results file of the second endpoint")
+    c.add_argument("--label-a", help="name of the first endpoint in the table")
+    c.add_argument("--label-b", help="name of the second endpoint in the table")
+    c.add_argument("--kinds", help="csv of the phases to compare (default: all)")
+    c.set_defaults(func=lambda args: compare(args.a, args.b, args.label_a, args.label_b,
+                                             args.kinds.split(",") if args.kinds else None))
 
     args = ap.parse_args()
     if args.cmd == "list":
