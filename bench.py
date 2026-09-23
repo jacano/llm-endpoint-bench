@@ -411,6 +411,15 @@ def med(vals):
     return round(st.median(vals), 1) if vals else None
 
 
+def present(rows: list[dict], key: str) -> int:
+    """How many records of a phase hold a value for this metric.
+
+    A record may hold a metric as null, and a median of 19 values is not a median of 20: an
+    answer that never writes a visible token has no delay to its first visible token.
+    """
+    return len([r for r in rows if isinstance(r.get(key), (int, float))])
+
+
 def thin_answer(key: str, *rowsets: list[dict]) -> tuple[int, str] | None:
     """The floor and the words of the numerator when a rate rests on too few tokens.
 
@@ -541,7 +550,7 @@ def compare(path_a: str, path_b: str) -> None:
                 continue
             ratio = round(b / a, 2) if (a and b) else None
             print("| %s | %s | %s | %s | %s | %d/%d | %s |"
-                  % (kind, key, fmt(a), fmt(b), fmt(ratio), len(rows_a), len(rows_b),
+                  % (kind, key, fmt(a), fmt(b), fmt(ratio), present(rows_a, key), present(rows_b, key),
                      verdict(key, a, b, la, lb, n)))
     for key in sorted(hidden):
         kinds_hidden, (floor, words) = hidden[key]

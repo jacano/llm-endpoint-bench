@@ -1,9 +1,9 @@
 # The analysis of the results
 
-Three campaigns measured the same model, `deepseek-v4.1-flash`, on two routes, CommandCode and
-OpenCode (Go), on one Windows 11 host, twenty minutes to four hours apart. This file holds their
-tables, what the differences come from, what holds between the windows, and the limits of the
-measurements.
+Four campaigns measured the same model, `deepseek-v4.1-flash`, on two routes, CommandCode and
+OpenCode (Go), on one Windows 11 host, in four windows between 15:34Z and 21:23Z on 2026-09-23.
+This file holds their tables, what the differences come from, what holds between the windows, and
+the limits of the measurements.
 
 The raw records and the full tables of each campaign are in `results/`, which `results/README.md`
 indexes:
@@ -11,6 +11,7 @@ indexes:
 - `results/2026-09-23T153444Z/` — the first window.
 - `results/2026-09-23T204204Z/` — the second window, four hours later.
 - `results/2026-09-23T210256Z/` — the third window, twenty minutes after the second one.
+- `results/2026-09-23T212350Z/` — the fourth window, twenty-one minutes after the third one.
 
 The tool that produced them is `bench.py`; the README states it.
 
@@ -72,36 +73,71 @@ windows before it. The full tables are in `results/2026-09-23T210256Z/summary.md
 | 4 parallel requests: rate of one request | 360.5 tokens/s | 217.7 tokens/s | 0.60 |
 | 4 parallel requests: total rate | 866.2 tokens/s | 429.5 tokens/s | 0.50 |
 
+## The fourth window (21:23Z)
+
+The same A/B test ran a fourth time on the same host, twenty-one minutes after the third window.
+Every difference points the same way. The two answers of the `long` phase differed in length more
+than in any window before, and the paragraph after the table states what that does to the rates of
+that phase. The full tables are in `results/2026-09-23T212350Z/summary.md`.
+
+| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
+|---|---|---|---|
+| TLS handshake, new connection | 40.6 ms | 272.8 ms | 6.72 |
+| TTFB of `/models`, new connection | 64.4 ms | 592.0 ms | 9.19 |
+| TTFB of `/models`, reused connection | 27.1 ms | 296.8 ms | 10.95 |
+| Short answer: TTFT of the first token | 753.8 ms | 1822.3 ms | 2.42 |
+| Long answer: TTFT of the visible token | 1677.2 ms | 2043.5 ms | 1.22 |
+| Long answer: total time | 2839.3 ms | 4006.4 ms | 1.41 |
+| TPS of the sustained decoding | 362.9 tokens/s | 260.3 tokens/s | 0.72 |
+| TPS of the visible content | 446.0 tokens/s | 291.9 tokens/s | 0.65 |
+| 4 parallel requests: rate of one request | 366.7 tokens/s | 243.6 tokens/s | 0.66 |
+| 4 parallel requests: total rate | 901.8 tokens/s | 423.9 tokens/s | 0.47 |
+
+The rate of the sustained decoding rose to 0.72, the highest of the four windows, because
+CommandCode wrote 684 output tokens for its long answer where OpenCode wrote 569: the numerator of
+that rate grew by a fifth, and the extra tokens are mostly reasoning. The two answers held the
+same visible content, 500 tokens against 499, and the rate of that content is 0.65.
+
 ## What holds between the windows
 
-The direction of every difference is the same in all three windows. The size of a difference moves
+The direction of every difference is the same in all four windows. The size of a difference moves
 with the queue of the provider, and two families of measurement move differently.
 
-| OpenCode divided by CommandCode | 15:34 | 20:42 | 21:02 |
-|---|---|---|---|
-| TTFB of `/models`, reused connection | 11.77 | 9.11 | 20.58 |
-| Short answer: TTFT of the first token | 1.75 | 2.20 | 2.16 |
-| Long answer: TTFT of the visible token | 2.36 | 1.66 | 1.96 |
-| Long answer: total time | 1.94 | 1.66 | 1.86 |
-| TPS of the sustained decoding | 0.62 | 0.63 | 0.66 |
-| 4 parallel requests: rate of one request | 0.62 | 0.63 | 0.60 |
+| OpenCode divided by CommandCode | 15:34 | 20:42 | 21:02 | 21:23 |
+|---|---|---|---|---|
+| TTFB of `/models`, reused connection | 11.77 | 9.11 | 20.58 | 10.95 |
+| Short answer: TTFT of the first token | 1.75 | 2.20 | 2.16 | 2.42 |
+| Long answer: TTFT of the visible token | 2.36 | 1.66 | 1.96 | 1.22 |
+| Long answer: total time | 1.94 | 1.66 | 1.86 | 1.41 |
+| TPS of the sustained decoding | 0.62 | 0.63 | 0.66 | 0.72 |
+| TPS of the visible content | 0.63 | 0.59 | 0.61 | 0.65 |
+| 4 parallel requests: rate of one request | 0.62 | 0.63 | 0.60 | 0.66 |
 
-- The rate of the sustained decoding is the most stable value of the three windows: 0.62, 0.63 and
-  0.66. The same holds for the rate of one request under 4 parallel requests: 0.62, 0.63 and 0.60.
-- The ratios of the delays move between windows: the gap in the TTFT of a short answer went from
-  1.75 to 2.20 between the first two windows, and the gap in the long answer from 2.36 to 1.66. A
-  fixed cost of the gateway plus a varying queue explains both.
-- The row of the reused socket is the least stable of the table, 9.11 to 20.58, and the third
-  window moved both sides at once: the median TTFB on a ready socket fell to 15.8 ms on
-  CommandCode while it rose to 325.2 ms on OpenCode. Read that row as the cost of the gateway at a
-  moment, not as a property of the route.
-- The gateway overhead of OpenCode is stable in absolute terms: 250.7 ms, 291.6 ms and 325.2 ms
-  with a ready socket, against 21.3 ms, 32.0 ms and 15.8 ms on CommandCode.
-- 4 parallel requests do not lower the rate of one request on either route in any window. The
-  aggregate rate is about twice the rate of one request on both sides, so the bottleneck of both
-  routes holds at 4 parallel requests.
-- The model always reasons first, in every window: the prompt `Reply with exactly: pong` spends
-  about 10 reasoning tokens before the visible answer of 3 tokens, on both routes.
+- The rates are the stable family, and the visible content of a long answer is the most stable of
+  them: 0.63, 0.59, 0.61 and 0.65. One request under 4 parallel requests gives 0.62, 0.63, 0.60 and
+  0.66.
+- The rate of the sustained decoding of a whole answer moved further than the others, from 0.62 to
+  0.72, and the fourth window shows the cause. That rate divides the output tokens of an answer by
+  the time of its generation, and the two `long` answers differed by a fifth in output tokens: 684
+  on CommandCode against 569 on OpenCode, because CommandCode spent more of them on reasoning, 184
+  against 70. The larger numerator lifts the rate. The visible content of the same two answers
+  matched, 500 tokens against 499, and the rate of that content moved least of all.
+- The ratios of the delays moved further in the fourth window than in the others: the gap in the
+  TTFT of a short answer went from 1.75 to 2.42 across the four windows, and the gap in the long
+  answer fell from 2.36 to 1.22, where the two routes came closest. Both sides moved in that
+  window, and a fixed cost of the gateway plus a varying queue explains both.
+- The row of the reused socket is the least stable of the table, 9.11 to 20.58, and the fourth
+  window landed near the low end of that range, 10.95. Read a row of this kind as the cost of the
+  gateway at a moment, not as a property of the route.
+- The gateway overhead of OpenCode is stable in absolute terms: 250.7 ms, 291.6 ms, 325.2 ms and
+  296.8 ms with a ready socket, against 21.3 ms, 32.0 ms, 15.8 ms and 27.1 ms on CommandCode.
+- 4 parallel requests do not lower the rate of one request on either route in any of the four
+  windows. The worst case is OpenCode in the fourth window, 243.6 tokens/s against the 260.3 of one
+  request, a fall of 6 percent. The aggregate rate stays between 1.7 and 2.5 times the rate of one
+  request, so the bottleneck of both routes holds at 4 parallel requests.
+- The model always reasons before it answers, in every window: the prompt `Reply with exactly:
+  pong` spends 14 reasoning tokens for a visible answer of 3 tokens in the fourth window, and about
+  the same in the windows before it.
 
 ## Limits
 

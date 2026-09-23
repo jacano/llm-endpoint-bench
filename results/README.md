@@ -16,13 +16,14 @@ the field `meta.started_utc`, and the header that the commands `report` and `com
 | `2026-09-23T153444Z/` | Windows 11 | 94 | CommandCode is faster than OpenCode (Go) on every measurement |
 | `2026-09-23T204204Z/` | Windows 11 | 96 | The same conclusion in a second window of the same host, four hours later |
 | `2026-09-23T210256Z/` | Windows 11 | 96 | The same conclusion in a third window of that host, twenty minutes later |
+| `2026-09-23T212350Z/` | Windows 11 | 96 | The same conclusion in a fourth window of that host, twenty-one minutes later |
 
-The three campaigns measured the same model, `deepseek-v4.1-flash`, on the two routes CommandCode
+The four campaigns measured the same model, `deepseek-v4.1-flash`, on the two routes CommandCode
 and OpenCode (Go), on one host. Read the `summary.md` of a directory for the tables, the findings
 and the limits of that campaign. The analysis of the windows with one another, and the limits that
 all of them share, are in `../ANALYSIS.md`.
 
-A session before these three wrote records with an older version of the tool: a phase vocabulary
+A session before these wrote records with an older version of the tool: a phase vocabulary
 of its own, no `meta` block in three of its four files, and a row of its table whose other side
 was never recorded. Those records are removed from the tree, because a campaign that a reader
 cannot check is worse than no campaign; they remain in the history of this repository.
@@ -61,6 +62,17 @@ The third window, twenty minutes after the second one. Both files come from the 
 | `summary.md` | - | The tables, the findings and the limits of this campaign. |
 | `ab_commandcode_20260923T210256Z.json` | 2026-09-23T21:02:56Z | The A/B test, CommandCode side, with 48 records and the phases transport, short, long and concurrent. |
 | `ab_opencode-go_20260923T210256Z.json` | 2026-09-23T21:02:56Z | The A/B test, OpenCode (Go) side, with 48 records and the same phases. |
+
+## 2026-09-23T212350Z
+
+The fourth window, twenty-one minutes after the third one. Both files come from the same command,
+`bench.py ab`, and they carry the same time: the two sides of one A/B test are written together.
+
+| File | Generated (UTC) | Content |
+|---|---|---|
+| `summary.md` | - | The tables, the findings and the limits of this campaign. |
+| `ab_commandcode_20260923T212350Z.json` | 2026-09-23T21:23:50Z | The A/B test, CommandCode side, with 48 records and the phases transport, short, long and concurrent. |
+| `ab_opencode-go_20260923T212350Z.json` | 2026-09-23T21:23:50Z | The A/B test, OpenCode (Go) side, with 48 records and the same phases. |
 
 ## The format of a file
 
