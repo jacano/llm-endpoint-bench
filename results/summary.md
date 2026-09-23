@@ -77,4 +77,5 @@ al menos 4 en paralelo.
 | `commandcode_single_20260923.json` | sesión de caracterización completa contra CommandCode (55 registros: transporte, corta, media, streaming, prefill, concurrencia 1 y 4, thinking on/off) |
 | `ab_commandcode_20260923.json` | A/B intercalado, lado CommandCode (18 registros) |
 | `ab_opencode-go_20260923.json` | A/B intercalado, lado OpenCode Go (18 registros) |
+| `bench_py_example_commandcode_20260923.json` | salida de ejemplo de `bench.py run` (19 registros, formato `{meta, records}`) |
 | `<endpoint>_<UTC>.json` | salida de `bench.py run` (formato `{meta, records}`) |
