@@ -9,38 +9,23 @@ Phases (all timed with curl + a browser UA, so no SDK retry logic hides the tail
               reads the body of /models, to confirm the model id of the route
   short       streaming, tiny answer        -> latency a user actually feels on "hi"
   long        streaming, ~600-token answer  -> TTFT split + sustained decode tok/s
-  prefill     streaming, ~18k-token input   -> does TTFT grow with the prompt?
-  thinking    streaming, ~400-token answer under each reasoning control (the
-              toggle `thinking` and the parameter `reasoning_effort`) -> does the
-              route honour any of them, or does the model always reason first?
-  concurrent  N parallel long requests      -> per-request and aggregate throughput
+  concurrent  4 parallel long answers       -> per-request and aggregate throughput
 
 Token counts come from the response `usage` block.
 
 Examples
 --------
     python bench.py list
-    python bench.py run --endpoint commandcode
-    python bench.py run --endpoint opencode-go --phases short,long
-    python bench.py ab --a commandcode --b opencode-go          # interleaved A/B
-    python bench.py report results/2026-09-23T150937Z/ab_opencode-go_20260923.json
-    python bench.py compare results/2026-09-23T153444Z/ab_commandcode_20260923T153444Z.json \
-        results/2026-09-23T153444Z/ab_opencode-go_20260923T153444Z.json
+    python bench.py ab --a commandcode --b opencode-go     # the whole A/B, both sides
+    python bench.py run --endpoint commandcode --phases short,long
+    python bench.py report results/2026-09-23T210256Z
+    python bench.py compare results/2026-09-23T210256Z
 
-Each run writes its files into a new directory `results/<date>T<time>Z/`, the time of the run in
-UTC, so a second run of the same day cannot mix with the first one. The name of the directory
-holds no other fact: the host and the operating system are in the `meta` block of each file.
-Give --out-dir to put the files of several commands in one directory of a campaign, as in
-results/2026-09-23T153444Z/. The name of a file
-is <endpoint>_<UTC>.json, and ab_<endpoint>_<UTC>.json for a side of an A/B test: the time of
-the run stays in the name of the file and in its `meta` block. The commands `report` and
-`compare` print that time, and both accept a directory: `report` on a directory reports every
-file of it, and `compare` on a directory compares the two sides of the last run in it. See
-results/README.md for the layout of a campaign directory.
-
-Any other OpenAI-compatible endpoint:
-    python bench.py run --base-url https://api.example.com/v1 --model vendor/model \
-        --key-env EXAMPLE_API_KEY --session-header --tag example
+To measure another route, add it to ENDPOINTS: the set of endpoints is data, and every command
+reads it. Each run writes its files into a new directory `results/<date>T<time>Z/`, named for
+the UTC time of the run, so a second run of the same day cannot mix with the first one. Give
+--out-dir to put the files of several commands in one directory of a campaign. `report` and
+`compare` accept a directory as well as a file, and results/README.md states the layout.
 
 Keys are read from the environment, then from a `.env` file beside the tool, then from the
 profile of the Hermes Agent desktop app when the machine holds one (names only are ever
@@ -90,7 +75,8 @@ def default_out_dir() -> str:
 
 PROMPT_SHORT = "Reply with exactly: pong"
 PROMPT_LONG = "List the integers from 1 to 250, one per line, no other text."
-PREFILL_WORDS = 6000  # ~18k tokens of ASCII filler
+#: Parallel long answers of the phase `concurrent`. One value, so no option for it.
+CONCURRENT = 4
 #: The floor of the numerator of each rate, with the words for it. Below the floor the
 #: window is an edge of a short answer rather than a rate of decoding. `tok_per_s_total`
 #: spans the reasoning as well as the content, so it needs a longer answer behind it.
@@ -99,16 +85,6 @@ MIN_OUTPUT_TOKENS = 50
 #: The numerator of each rate: the field, the words for it, and the floor it needs.
 RATE_OF = {"tok_per_s_visible": ("content_tokens", "content tokens", MIN_CONTENT_TOKENS),
            "tok_per_s_total": ("out_tokens", "output tokens", MIN_OUTPUT_TOKENS)}
-#: The reasoning controls of the gateway, for the phase `thinking`. The README says
-#: that the route ignores all of them.
-THINKING_MODES = [
-    ("absent", {}),
-    ("disabled", {"thinking": {"type": "disabled"}}),
-    ("enabled", {"thinking": {"type": "enabled"}}),
-    ("effort_low", {"reasoning_effort": "low"}),
-    ("effort_high", {"reasoning_effort": "high"}),
-]
-THINKING_MAX_TOKENS = 400
 
 #: Known endpoints. `deepseek-v4.1-flash` is the same model on both routes;
 #: only the id spelling and the transport differ.
@@ -149,19 +125,11 @@ def api_key(name: str) -> str | None:
     return os.environ.get(name) or load_env_file().get(name)
 
 
-def endpoint(name: str = None, base_url: str = None, model: str = None,
-             key_env: str = None, session_header: bool = False) -> dict:
-    if name:
-        if name not in ENDPOINTS:
-            sys.exit("unknown endpoint %r (known: %s)" % (name, ", ".join(ENDPOINTS)))
-        ep = dict(ENDPOINTS[name])
-        ep["name"] = name
-    else:
-        if not (base_url and model and key_env):
-            sys.exit("--base-url, --model and --key-env are all required for a custom endpoint")
-        ep = {"name": base_url, "base_url": base_url, "model": model, "key_env": key_env,
-              "session_header": session_header}
-    ep.update({k: v for k, v in (("base_url", base_url), ("model", model)) if v})
+def endpoint(name: str) -> dict:
+    if name not in ENDPOINTS:
+        sys.exit("unknown endpoint %r (known: %s)" % (name, ", ".join(ENDPOINTS)))
+    ep = dict(ENDPOINTS[name])
+    ep["name"] = name
     ep["key"] = api_key(ep["key_env"])
     return ep
 
@@ -239,12 +207,11 @@ def ms(seconds: str) -> float:
 
 # ----------------------------------------------------------------------- streaming
 
-def stream(ep: dict, prompt: str, max_tokens: int, extra: dict | None = None) -> dict:
+def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
     """Streaming request; TTFT split + exact token counts from the trailing usage block."""
     body = {"model": ep["model"], "messages": [{"role": "user", "content": prompt}],
             "max_tokens": max_tokens, "stream": True,
             "stream_options": {"include_usage": True}}
-    body.update(extra or {})  # a reasoning control, for the phase `thinking`
     payload = json.dumps(body)
     args = ["curl", "-sS", "-N", "-X", "POST", ep["base_url"] + "/chat/completions"] + \
         headers(ep) + ["--data-binary", "@-"]
@@ -307,61 +274,45 @@ def stream(ep: dict, prompt: str, max_tokens: int, extra: dict | None = None) ->
     }
 
 
-def phase_transport(ep, n_concurrent):
+def phase_transport(ep):
     return transport(ep)
 
 
-def phase_short(ep, n_concurrent, n=5):
+def phase_short(ep, n=5):
     return [dict(kind="short", iter=i + 1, **stream(ep, PROMPT_SHORT, 64)) for i in range(n)]
 
 
-def phase_long(ep, n_concurrent, n=4):
+def phase_long(ep, n=4):
     return [dict(kind="long", iter=i + 1, **stream(ep, PROMPT_LONG, 1200)) for i in range(n)]
 
 
-def phase_prefill(ep, n_concurrent):
-    filler = " ".join("token%04d" % i for i in range(PREFILL_WORDS))
-    r = stream(ep, filler + "\n\nReply with exactly: pong", 24, extra={"thinking": {"type": "disabled"}})
-    return [dict(kind="prefill", iter=1, approx_in_tokens=PREFILL_WORDS, **r)]
-
-
-def phase_thinking(ep, n_concurrent):
-    """One long answer under each reasoning control -> does the route honour any of them?"""
-    rows = []
-    for i, (mode, extra) in enumerate(THINKING_MODES):
-        r = stream(ep, PROMPT_LONG, THINKING_MAX_TOKENS, extra=extra)
-        rows.append(dict(kind="thinking_" + mode, iter=i + 1, mode=mode, **r))
-    return rows
-
-
-def phase_concurrent(ep, n_concurrent):
+def phase_concurrent(ep):
     def one(i):
-        return dict(kind="concurrent_%d" % n_concurrent, iter=i + 1,
+        return dict(kind="concurrent_%d" % CONCURRENT, iter=i + 1,
                     **stream(ep, PROMPT_LONG, 1200))
 
     t0 = time.perf_counter()
-    with cf.ThreadPoolExecutor(max_workers=n_concurrent) as ex:
-        rows = list(ex.map(one, range(n_concurrent)))
+    with cf.ThreadPoolExecutor(max_workers=CONCURRENT) as ex:
+        rows = list(ex.map(one, range(CONCURRENT)))
     wall = time.perf_counter() - t0
     tokens = sum(r.get("out_tokens") or 0 for r in rows)
-    rows.append({"kind": "concurrent_summary", "iter": n_concurrent, "n": n_concurrent,
+    rows.append({"kind": "concurrent_summary", "iter": CONCURRENT, "n": CONCURRENT,
                  "wall_s": round(wall, 3), "out_tokens": tokens,
                  "aggregate_tok_per_s": round(tokens / wall, 1),
-                 "request_per_s": round(n_concurrent / wall, 3)})
+                 "request_per_s": round(CONCURRENT / wall, 3)})
     return rows
 
 
 PHASES = {"transport": phase_transport, "short": phase_short, "long": phase_long,
-          "prefill": phase_prefill, "thinking": phase_thinking,
           "concurrent": phase_concurrent}
 
 
 # ------------------------------------------------------------------------- running
 
-def run_phases(ep: dict, phases: list[str], n_concurrent: int) -> list[dict]:
+def run_phases(ep: dict, phases: list[str]) -> list[dict]:
     recs = []
     for name in phases:
-        rows = PHASES[name](ep, n_concurrent)
+        rows = PHASES[name](ep)
         for r in rows:
             r.update({"endpoint": ep["name"], "model": ep["model"]})
             print("  %-16s %-12s %s" % (ep["name"], name, summarize(r)), flush=True)
@@ -551,14 +502,13 @@ def metrics_for(kind: str) -> list[str]:
     return COMPARE_METRICS.get(kind, COMPARE_DEFAULT)
 
 
-def compare(path_a: str, path_b: str, label_a: str | None = None, label_b: str | None = None,
-            kinds: list[str] | None = None) -> None:
+def compare(path_a: str, path_b: str) -> None:
     """Print a markdown table of the median of each metric of two result files."""
     ra = [r for r in load_records(path_a) if not r.get("error")]
     rb = [r for r in load_records(path_b) if not r.get("error")]
-    la = str(label_a or (ra[0].get("endpoint") if ra else "A"))
-    lb = str(label_b or (rb[0].get("endpoint") if rb else "B"))
-    ks = kinds or sorted({str(r.get("kind")) for r in ra + rb if r.get("kind")})
+    la = str(ra[0].get("endpoint") if ra else "A")
+    lb = str(rb[0].get("endpoint") if rb else "B")
+    ks = sorted({str(r.get("kind")) for r in ra + rb if r.get("kind")})
     print("%s (%d records)" % (path_a, len(ra)))
     print("  " + generation_line(path_a))
     print("%s (%d records)" % (path_b, len(rb)))
@@ -646,7 +596,7 @@ def cmd_ab(args) -> None:
         n = args.n if phase in ("short", "long") else 1
         for i in range(n):
             for ep in (a, b):  # interleaved: provider load hits both sides equally
-                rows = PHASES[phase](ep, args.concurrent)
+                rows = PHASES[phase](ep)
                 for r in rows:
                     r.update({"endpoint": ep["name"], "model": ep["model"]})
                     print("  %-14s %-10s [%d] %s" % (ep["name"], phase, i + 1, summarize(r)), flush=True)
@@ -658,15 +608,13 @@ def cmd_ab(args) -> None:
 
 
 def cmd_run(args) -> None:
-    ep = endpoint(args.endpoint, args.base_url, args.model, args.key_env, args.session_header)
-    if args.tag:
-        ep["name"] = args.tag
+    ep = endpoint(args.endpoint)
     if not ep["key"]:
         sys.exit("no API key for %s: set %s in the environment, or in a .env file beside the "
                  "tool" % (ep["name"], ep["key_env"]))
     phases = args.phases.split(",")
     print("endpoint=%s model=%s phases=%s" % (ep["name"], ep["model"], phases))
-    recs = run_phases(ep, phases, args.concurrent)
+    recs = run_phases(ep, phases)
     path = write_results(recs, ep, phases, args.out_dir or default_out_dir())
     print("wrote", path)
     report(path)
@@ -686,8 +634,7 @@ def cmd_report(args) -> None:
 def cmd_compare(args) -> None:
     """Compare two files, or the two sides of the last run in one directory."""
     a, b = (args.a, args.b) if args.b else dir_pair(args.a)
-    compare(a, b, args.label_a, args.label_b,
-            args.kinds.split(",") if args.kinds else None)
+    compare(a, b)
 
 
 def main() -> None:
@@ -698,16 +645,8 @@ def main() -> None:
     sub.add_parser("list", help="show known endpoints")
 
     r = sub.add_parser("run", help="benchmark one endpoint")
-    r.add_argument("--endpoint", choices=sorted(ENDPOINTS))
-    r.add_argument("--base-url")
-    r.add_argument("--model")
-    r.add_argument("--key-env")
-    r.add_argument("--session-header", action="store_true",
-                   help="send x-opencode-session (OpenCode Go requires it)")
-    r.add_argument("--tag", help="name for the results file")
-    r.add_argument("--phases", default="transport,short,long,prefill",
-                   help="csv of: %s" % ",".join(PHASES))
-    r.add_argument("--concurrent", type=int, default=4, help="parallel requests for `concurrent`")
+    r.add_argument("--endpoint", required=True, choices=sorted(ENDPOINTS))
+    r.add_argument("--phases", default=",".join(PHASES), help="csv of: %s" % ",".join(PHASES))
     r.add_argument("--out-dir", help="directory of the result file (default: one directory "
                                      "for each run, results/<date>T<time>Z/)")
     r.set_defaults(func=cmd_run)
@@ -715,9 +654,8 @@ def main() -> None:
     a = sub.add_parser("ab", help="interleaved A/B between two endpoints")
     a.add_argument("--a", required=True, choices=sorted(ENDPOINTS))
     a.add_argument("--b", required=True, choices=sorted(ENDPOINTS))
-    a.add_argument("--phases", default="transport,short,long")
+    a.add_argument("--phases", default=",".join(PHASES), help="csv of: %s" % ",".join(PHASES))
     a.add_argument("--n", type=int, default=4, help="rounds for short/long")
-    a.add_argument("--concurrent", type=int, default=4)
     a.add_argument("--out-dir", help="directory of the result files (default: one directory "
                                      "for each run, results/<date>T<time>Z/)")
     a.set_defaults(func=cmd_ab)
@@ -730,9 +668,6 @@ def main() -> None:
     c.add_argument("a", help="results file of the first endpoint, or a directory of one run")
     c.add_argument("b", nargs="?",
                    help="results file of the second endpoint (omit it if a is a directory)")
-    c.add_argument("--label-a", help="name of the first endpoint in the table")
-    c.add_argument("--label-b", help="name of the second endpoint in the table")
-    c.add_argument("--kinds", help="csv of the phases to compare (default: all)")
     c.set_defaults(func=cmd_compare)
 
     args = ap.parse_args()

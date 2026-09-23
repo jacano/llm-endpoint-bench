@@ -831,28 +831,6 @@
    "model": "deepseek-v4.1-flash"
   },
   {
-   "kind": "prefill",
-   "iter": 1,
-   "approx_in_tokens": 6000,
-   "ttft_any_ms": 1701.7,
-   "ttft_reasoning_ms": 1701.7,
-   "ttft_content_ms": 1759.7,
-   "total_ms": 1763.7,
-   "gen_ms": 58.0,
-   "in_tokens": 18037,
-   "out_tokens": 13,
-   "reasoning_tokens": 10,
-   "content_tokens": 3,
-   "deltas_reasoning": 3,
-   "deltas_content": 1,
-   "deltas_empty": 2,
-   "tok_per_s_total": 224.2,
-   "tok_per_s_visible": null,
-   "error": null,
-   "endpoint": "opencode-go",
-   "model": "deepseek-v4.1-flash"
-  },
-  {
    "kind": "concurrent_4",
    "iter": 1,
    "ttft_any_ms": 2247.1,

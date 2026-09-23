@@ -1,4 +1,4 @@
-# Results: deepseek-v4.1-flash on CommandCode and on OpenCode (Go), a third run on Windows 11
+# Results: deepseek-v4.1-flash on CommandCode and on OpenCode (Go), Windows 11, 21:02Z
 
 The run started at 2026-09-23T21:02:56Z (23:02 local time). Machine: Windows 11, Python 3.11.16.
 Client: `curl` 8.12.1 with a browser user agent. The two sides ran in the same session, in an
@@ -7,19 +7,18 @@ interleaved A/B order.
 Both routes serve the same model. CommandCode names it `deepseek/deepseek-v4.1-flash`. OpenCode
 names it `deepseek-v4.1-flash`.
 
-- CommandCode: 54 clean requests, no error.
-- OpenCode (Go): 54 clean requests, no error.
-- The phases `transport`, `short`, `long`, `prefill`, `thinking` and `concurrent` ran on both
-  sides. Each phase has 3, 20, 16, 1, 5 and 4 samples for a side, plus the concurrent summary.
+- CommandCode: 48 clean requests, no error.
+- OpenCode (Go): 48 clean requests, no error.
+- The phases `transport`, `short`, `long` and `concurrent` ran on both sides. Each phase has 3,
+  20, 16 and 4 samples for a side, plus the concurrent summary.
 - The tool reads each token count from the `usage` block of the response.
 
-This is the fourth campaign and the third one on this host. It repeats the A/B test of the runs
-of 15:34:44Z and 20:42:04Z on the same machine, 20 minutes after the second of them, in another
-window of the provider. The command was the same:
+This is the third window on this host. It repeats the A/B test of the runs of 15:34:44Z and
+20:42:04Z on the same machine, twenty minutes after the second of them, in another window of the
+provider. The command was:
 
 ```
-python bench.py ab --a commandcode --b opencode-go \
-  --phases transport,short,long,prefill,thinking,concurrent --n 4 --concurrent 4
+python bench.py ab --a commandcode --b opencode-go --n 4
 ```
 
 ## Comparison of the two routes
@@ -39,7 +38,6 @@ The table gives the median value of each measurement.
 | Long answer: total time | 2503.9 ms | 4645.6 ms | 1.86 |
 | TPS of the sustained decoding | 373.1 tokens/s | 246.7 tokens/s | 0.66 |
 | TPS of the visible content | 446.3 tokens/s | 273.4 tokens/s | 0.61 |
-| TTFT with 18037 input tokens | 1227.4 ms | 2057.1 ms | 1.68 |
 | 4 parallel requests: rate of one request | 360.5 tokens/s | 217.7 tokens/s | 0.60 |
 | 4 parallel requests: total rate | 866.2 tokens/s and 1.5 requests/s | 429.5 tokens/s and 0.6 requests/s | 0.50 |
 
@@ -48,22 +46,21 @@ every measurement.
 
 ## The ratios hold, the absolute values move
 
-The same test has now run three times on this host and once on a macOS host. The direction of
-every difference is the same in all four campaigns. The size of a difference moves with the
-queue of the provider, and two families of measurement move differently.
+The same test has now run three times on this host. The direction of every difference is the same
+in all three windows, and the size of a difference moves with the queue of the provider.
 
-| Measurement: OpenCode divided by CommandCode | 2026-09-23T150937Z, macOS | 2026-09-23T153444Z, Windows | 2026-09-23T204204Z, Windows | 2026-09-23T210256Z, Windows |
-|---|---|---|---|---|
-| TTFB of `/models`, reused connection | 13.0 | 11.77 | 9.11 | 20.58 |
-| Short answer: TTFT of the first token | 1.71 | 1.75 | 2.20 | 2.16 |
-| Long answer: TTFT of the visible token | 2.01 | 2.36 | 1.66 | 1.96 |
-| Long answer: total time | 1.85 | 1.94 | 1.66 | 1.86 |
-| TPS of the sustained decoding | 0.64 | 0.62 | 0.63 | 0.66 |
-| 4 parallel requests: rate of one request | 0.62 | 0.62 | 0.63 | 0.60 |
+| Measurement: OpenCode divided by CommandCode | 2026-09-23T153444Z | 2026-09-23T204204Z | 2026-09-23T210256Z |
+|---|---|---|---|
+| TTFB of `/models`, reused connection | 11.77 | 9.11 | 20.58 |
+| Short answer: TTFT of the first token | 1.75 | 2.20 | 2.16 |
+| Long answer: TTFT of the visible token | 2.36 | 1.66 | 1.96 |
+| Long answer: total time | 1.94 | 1.66 | 1.86 |
+| TPS of the sustained decoding | 0.62 | 0.63 | 0.66 |
+| 4 parallel requests: rate of one request | 0.62 | 0.63 | 0.60 |
 
-- The rate of the sustained decoding is the most stable value of the four campaigns: 0.64, 0.62,
-  0.63 and 0.66. The same holds for the rate of one request under 4 parallel requests: 0.62, 0.62,
-  0.63 and 0.60.
+- The rate of the sustained decoding is the most stable value of the three windows: 0.62, 0.63
+  and 0.66. The same holds for the rate of one request under 4 parallel requests: 0.62, 0.63 and
+  0.60.
 - The ratio of the reused socket moved further than in any other window, and both sides caused it:
   the median TTFB of `/models` on a ready socket fell to 15.8 ms on CommandCode (21.3 ms and
   32.0 ms in the two windows before) while it rose to 325.2 ms on OpenCode (250.7 ms and
@@ -82,27 +79,6 @@ The rest of the gap comes from the queue and the start of the model. OpenCode se
 model about 1.5 times slower in the sustained decoding, on the same output: the two sides wrote
 631.5 and 601.5 output tokens for the long answer, a difference of 5 percent.
 
-## The reasoning controls do not hold the model back
-
-The phase `thinking` sends one long answer under each control. The table gives the value of one
-request for each control, so it is an observation and not a measurement.
-
-| Control | CommandCode: reasoning tokens | OpenCode (Go): reasoning tokens |
-|---|---|---|
-| absent | 63 | 102 |
-| `thinking: disabled` | 36 | 0 |
-| `thinking: enabled` | 110 | 57 |
-| `reasoning_effort: low` | 81 | 124 |
-| `reasoning_effort: high` | 206 | 130 |
-
-The value `thinking: {"type": "disabled"}` did not stop the reasoning on CommandCode, which spent
-36 reasoning tokens. On OpenCode the same control gave a report of 0 reasoning tokens, and that
-side spent the whole budget of the phase on the content of the answer instead. The value
-`thinking: enabled` spent 110 and 57 reasoning tokens, where the same control spent the whole
-budget of 400 tokens on both routes in the run of 20:42:04Z: the count of reasoning tokens of one
-long answer is not a property of the control, and one request proves nothing in either direction.
-Read this phase as a hint that the routes do not treat these parameters in the same way.
-
 ## Parallel requests
 
 | Endpoint | One request | 4 parallel requests, total | Requests each second |
@@ -116,23 +92,17 @@ windows before. The bottleneck of both routes holds at 4 parallel requests.
 
 ## Limits
 
-- Each measurement has 1 to 20 samples, and the phases `models`, `prefill`, `thinking` and
-  `concurrent` have very few. A difference below 10 percent is noise. The comparison prints the
-  number of samples of each side and names no winner for a phase with fewer than 3.
-- The absolute values of this campaign are not comparable with the other campaigns, because the
-  host, the network path and the window differ. Compare the ratios only.
+- Each measurement has 1 to 20 samples, and the phases `models` and `concurrent` have 3 and 4
+  samples for a side. A difference below 10 percent is noise. The comparison prints the number of
+  samples of each side and names no winner for a phase of one sample.
+- The absolute values of this campaign are not comparable with those of another window, because
+  the host, the network path and the window differ. Compare the ratios only.
 - The absolute values of a ratio of a delay are not comparable between rows either: the row of
-  the reused socket is the least stable of the table, 13.0 to 20.58 over four campaigns. The rate
-  of the sustained decoding is the most stable, 0.60 to 0.66.
-- The phase `prefill` uses `max_tokens=24`. On CommandCode the model spent all 24 tokens on the
-  reasoning, so the response holds no visible token and the value `ttft_content_ms` is absent on
-  that side. On OpenCode the answer held 2 content tokens, so the record holds a rate of 107526.9
-  tokens/s that the tool does not print: a rate needs an answer of 50 output tokens behind it.
-  The value `ttft_any_ms` is correct on both sides.
+  the reused socket is the least stable of the table, 9.11 to 20.58 over three windows. The rate
+  of the sustained decoding is the most stable, 0.62 to 0.66.
 - A rate needs a numerator. The tool prints no rate for a phase whose median answer holds fewer
-  than 50 output tokens or fewer than 10 content tokens, so the `short` and `prefill` phases of
-  this campaign hold no rate at all, and the five phases of `thinking` hold none of
-  `tok_per_s_visible`. Read a rate for long answers only.
+  than 50 output tokens or fewer than 10 content tokens, so the `short` phase of this campaign
+  holds no rate. Read a rate for long answers only.
 - The number of model identifiers that a route lists is a count, not a score: CommandCode lists
   80 and OpenCode lists 35 in this window.
 - The campaign did not test retries, tool calls, or streaming with tools.
@@ -141,10 +111,9 @@ windows before. The bottleneck of both routes holds at 4 parallel requests.
 
 | File | Generated (UTC) | Content |
 |---|---|---|
-| `ab_commandcode_20260923T210256Z.json` | 2026-09-23T21:02:56Z | This A/B test, CommandCode side, with 54 records in the `{meta, records}` format. |
-| `ab_opencode-go_20260923T210256Z.json` | 2026-09-23T21:02:56Z | This A/B test, OpenCode (Go) side, with 54 records in the `{meta, records}` format. |
+| `ab_commandcode_20260923T210256Z.json` | 2026-09-23T21:02:56Z | This A/B test, CommandCode side, with 48 records in the `{meta, records}` format. |
+| `ab_opencode-go_20260923T210256Z.json` | 2026-09-23T21:02:56Z | This A/B test, OpenCode (Go) side, with 48 records in the `{meta, records}` format. |
 
 Both files carry the same time, because one command `bench.py ab` wrote the two sides together.
-The earlier campaigns are in the directories `../2026-09-23T150937Z/` (macOS, with the full
-characterization of the model), `../2026-09-23T153444Z/` (Windows, the first run) and
-`../2026-09-23T204204Z/` (Windows, the second run).
+The other two windows of this host are in the directories `../2026-09-23T153444Z/` (the first) and
+`../2026-09-23T204204Z/` (the second).

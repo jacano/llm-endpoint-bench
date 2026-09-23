@@ -831,28 +831,6 @@
    "model": "deepseek/deepseek-v4.1-flash"
   },
   {
-   "kind": "prefill",
-   "iter": 1,
-   "approx_in_tokens": 6000,
-   "ttft_any_ms": 1235.6,
-   "ttft_reasoning_ms": 1235.6,
-   "ttft_content_ms": null,
-   "total_ms": 1445.6,
-   "gen_ms": 207.1,
-   "in_tokens": 18037,
-   "out_tokens": 24,
-   "reasoning_tokens": 24,
-   "content_tokens": 0,
-   "deltas_reasoning": 24,
-   "deltas_content": 0,
-   "deltas_empty": 2,
-   "tok_per_s_total": 115.9,
-   "tok_per_s_visible": null,
-   "error": null,
-   "endpoint": "commandcode",
-   "model": "deepseek/deepseek-v4.1-flash"
-  },
-  {
    "kind": "concurrent_4",
    "iter": 1,
    "ttft_any_ms": 1056.4,
