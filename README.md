@@ -143,28 +143,10 @@ Hermes Agent has a provider profile for each endpoint. Set `model.provider` to `
 ```
 bench.py     the runner. Use this file for a new measurement.
 results/     the measurements of 2026-09-23 and the summary tables of both campaigns.
-scripts/     the first version of each tool, as it ran during the session, and no_secrets.py.
+scripts/     the first version of each tool, as it ran during the session.
 ```
 
-`bench.py` is the consolidated version of the scripts. The files in `scripts/` stay in the repository for traceability, and `scripts/no_secrets.py` guards a commit.
-
-## Before you commit
-
-The tool `scripts/no_secrets.py` refuses a commit that carries a credential. It collects each value from the environment and from the Hermes key files, then searches the files for those values and for the usual shapes of a key. It prints the path, the line and the name of the rule that matched. It never prints the value.
-
-```bash
-python3 scripts/no_secrets.py --staged         # the files of git's index
-python3 scripts/no_secrets.py results/*.json   # the files that you name
-```
-
-Install the tool as a hook, so git runs it before each commit:
-
-```bash
-printf '#!/bin/sh\nexec python scripts/no_secrets.py --staged\n' > .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
-```
-
-A key that reached a remote stays in the history of the repository. Remove the file from the commit, then rotate the key.
+`bench.py` is the consolidated version of the scripts. The files in `scripts/` stay in the repository for traceability.
 
 ## Pitfalls
 
