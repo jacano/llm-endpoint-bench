@@ -15,8 +15,9 @@ the field `meta.started_utc`, and the header that the commands `report` and `com
 |---|---|---|---|---|
 | `2026-09-23T150937Z/` | macOS 26.6.2 | `curl`, browser user agent | 102 | CommandCode is faster than OpenCode (Go) on every measurement |
 | `2026-09-23T153444Z/` | Windows 11, Python 3.11.16 | `curl` 8.12.1, browser user agent | 96 | The same conclusion on another host and another network path |
+| `2026-09-23T204204Z/` | Windows 11, Python 3.11.16 | `curl` 8.12.1, browser user agent | 108 | The same conclusion in a second window of the same host, four hours later |
 
-Both campaigns measured the same model, `deepseek-v4.1-flash`, on the two routes CommandCode
+The three campaigns measured the same model, `deepseek-v4.1-flash`, on the two routes CommandCode
 and OpenCode (Go). Read the `summary.md` of a directory for the tables, the findings and the
 limits of that campaign.
 
@@ -45,6 +46,19 @@ same time: the two sides of one A/B test are written together.
 | `summary.md` | - | The tables, the findings and the limits of this campaign. |
 | `ab_commandcode_20260923T153444Z.json` | 2026-09-23T15:34:44Z | The A/B test, CommandCode side, with 48 records and the phases transport, short, long, prefill and concurrent. |
 | `ab_opencode-go_20260923T153444Z.json` | 2026-09-23T15:34:44Z | The A/B test, OpenCode (Go) side, with 48 records and the same phases. |
+
+## 2026-09-23T204204Z
+
+The third session, four hours after the second one on the same host. Both files come from the
+same command, `bench.py ab`, and they carry the same time: the two sides of one A/B test are
+written together. This campaign also ran the phase `thinking`, so each side holds 54 records
+instead of 48.
+
+| File | Generated (UTC) | Content |
+|---|---|---|
+| `summary.md` | - | The tables, the findings and the limits of this campaign. |
+| `ab_commandcode_20260923T204204Z.json` | 2026-09-23T20:42:04Z | The A/B test, CommandCode side, with 54 records and the phases transport, short, long, prefill, thinking and concurrent. |
+| `ab_opencode-go_20260923T204204Z.json` | 2026-09-23T20:42:04Z | The A/B test, OpenCode (Go) side, with 54 records and the same phases. |
 
 ## The format of a file
 

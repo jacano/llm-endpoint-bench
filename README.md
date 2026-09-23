@@ -4,7 +4,7 @@ This repository measures three properties of an OpenAI-compatible model endpoint
 
 The tool is `bench.py`. It sends each request with `curl`, so no client library retry hides the slow end of the distribution. It reads the token counts from the `usage` block of the response.
 
-The directory `results/` holds one directory for each campaign, and each of them holds a `summary.md` and its raw records. `results/README.md` is the index of the campaigns. The campaign of the first session ran on macOS; the second campaign repeated the same test on Windows 11.
+The directory `results/` holds one directory for each campaign, and each of them holds a `summary.md` and its raw records. `results/README.md` is the index of the campaigns. The campaign of the first session ran on macOS; the second and the third campaigns repeated the same test on Windows 11.
 
 ## Results
 
@@ -42,6 +42,20 @@ The same A/B test ran again on a Windows 11 host through another network path. T
 | 4 parallel requests: total rate | 808.6 tokens/s | 577.3 tokens/s | 1.40 times |
 
 The conclusion does not depend on the host: CommandCode is faster on every measurement in both campaigns.
+
+## Results of the third campaign (Windows 11, a second window)
+
+The same A/B test ran a second time on the same Windows 11 host, four hours after the second campaign, and it added the phase `thinking`. Every difference points the same way; the size of a difference moves with the queue of the provider. The full tables are in `results/2026-09-23T204204Z/summary.md`.
+
+| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
+|---|---|---|---|
+| TTFB of `/models`, reused connection | 32.0 ms | 291.6 ms | 9.11 |
+| Short answer: TTFT of the first token | 812.5 ms | 1784.8 ms | 2.20 |
+| Long answer of 500 visible tokens: TTFT of the first visible token | 1462.2 ms | 2429.8 ms | 1.66 |
+| TPS of the sustained decoding | 372.1 tokens/s | 234.2 tokens/s | 0.63 |
+| 4 parallel requests: total rate | 799.7 tokens/s | 478.8 tokens/s | 0.60 |
+
+The rate of the sustained decoding is the most stable value of the three campaigns: 0.64, 0.62 and 0.63 against CommandCode.
 
 ## Requirements
 
