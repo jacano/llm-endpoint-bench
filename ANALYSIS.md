@@ -1,6 +1,6 @@
 # The analysis of the results
 
-Three campaigns measured the same model, `deepseek-v4.1-flash`, on two routes: CommandCode and
+Four campaigns measured the same model, `deepseek-v4.1-flash`, on two routes: CommandCode and
 OpenCode (Go). This file holds their tables, what the differences come from, what holds between
 the campaigns, and the limits of the measurements.
 
@@ -13,6 +13,8 @@ indexes:
   another network path.
 - `results/2026-09-23T204204Z/` — the third campaign, four hours later on the same host, with the
   phase `thinking` added.
+- `results/2026-09-23T210256Z/` — the fourth campaign, twenty minutes after the third one on the
+  same host, in a third window of the provider.
 
 The tool that produced them is `bench.py`; the README states it.
 
@@ -78,33 +80,56 @@ difference moves with the queue of the provider. The full tables are in
 | TPS of the sustained decoding | 372.1 tokens/s | 234.2 tokens/s | 0.63 |
 | 4 parallel requests: total rate | 799.7 tokens/s | 478.8 tokens/s | 0.60 |
 
+## The fourth campaign (Windows 11, a third window)
+
+The same A/B test ran a third time on the same Windows 11 host, twenty minutes after the third
+campaign. Every difference points the same way, and the delays of the model itself stayed inside
+the range of the other windows. The full tables are in
+`results/2026-09-23T210256Z/summary.md`.
+
+| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
+|---|---|---|---|
+| TLS handshake, new connection | 37.9 ms | 230.0 ms | 6.07 |
+| TTFB of `/models`, reused connection | 15.8 ms | 325.2 ms | 20.58 |
+| Short answer: TTFT of the first token | 826.3 ms | 1781.7 ms | 2.16 |
+| Long answer of 500 visible tokens: TTFT of the first visible token | 1380.4 ms | 2699.5 ms | 1.96 |
+| Long answer of 500 visible tokens: total time | 2503.9 ms | 4645.6 ms | 1.86 |
+| TPS of the sustained decoding | 373.1 tokens/s | 246.7 tokens/s | 0.66 |
+| 4 parallel requests: rate of one request | 360.5 tokens/s | 217.7 tokens/s | 0.60 |
+| 4 parallel requests: total rate | 866.2 tokens/s | 429.5 tokens/s | 0.50 |
+
 ## What holds between the campaigns
 
-The direction of every difference is the same in all three campaigns. The size of a difference
+The direction of every difference is the same in all four campaigns. The size of a difference
 moves with the queue of the provider, and two families of measurement move differently.
 
-| OpenCode divided by CommandCode | macOS, 15:09 | Windows, 15:34 | Windows, 20:42 |
-|---|---|---|---|
-| TTFB of `/models`, reused connection | 13.0 | 11.77 | 9.11 |
-| Short answer: TTFT of the first token | 1.71 | 1.75 | 2.20 |
-| Long answer: TTFT of the visible token | 2.01 | 2.36 | 1.66 |
-| Long answer: total time | 1.85 | 1.94 | 1.66 |
-| TPS of the sustained decoding | 0.64 | 0.62 | 0.63 |
-| 4 parallel requests: rate of one request | 0.62 | 0.62 | 0.63 |
+| OpenCode divided by CommandCode | macOS, 15:09 | Windows, 15:34 | Windows, 20:42 | Windows, 21:02 |
+|---|---|---|---|---|
+| TTFB of `/models`, reused connection | 13.0 | 11.77 | 9.11 | 20.58 |
+| Short answer: TTFT of the first token | 1.71 | 1.75 | 2.20 | 2.16 |
+| Long answer: TTFT of the visible token | 2.01 | 2.36 | 1.66 | 1.96 |
+| Long answer: total time | 1.85 | 1.94 | 1.66 | 1.86 |
+| TPS of the sustained decoding | 0.64 | 0.62 | 0.63 | 0.66 |
+| 4 parallel requests: rate of one request | 0.62 | 0.62 | 0.63 | 0.60 |
 
-- The rate of the sustained decoding is the most stable value of the three campaigns: 0.64, 0.62
-  and 0.63. The same holds for the rate of one request under 4 parallel requests: 0.62, 0.62 and
-  0.63.
+- The rate of the sustained decoding is the most stable value of the four campaigns: 0.64, 0.62,
+  0.63 and 0.66. The same holds for the rate of one request under 4 parallel requests: 0.62, 0.62,
+  0.63 and 0.60.
 - The ratios of the delays move between windows: the gap in the TTFT of a short answer went from
-  1.75 to 2.20 between the two runs on the same host, and the gap in the long answer went from
-  2.36 to 1.66. A fixed cost of the gateway plus a varying queue explains both.
-- The gateway overhead of OpenCode is stable in absolute terms: 265 ms, 250.7 ms and 291.6 ms
-  with a ready socket, against 20 ms, 21.3 ms and 32.0 ms on CommandCode.
+  1.75 to 2.20 between the two runs on the same host, and the gap in the long answer from 2.36 to
+  1.66. A fixed cost of the gateway plus a varying queue explains both.
+- The row of the reused socket is the least stable of the table, 13.0 to 20.58, and the last
+  window moved both sides at once: the median TTFB on a ready socket fell to 15.8 ms on
+  CommandCode while it rose to 325.2 ms on OpenCode. Read that row as the cost of the gateway at
+  a moment, not as a property of the route.
+- The gateway overhead of OpenCode is stable in absolute terms: 265 ms, 250.7 ms, 291.6 ms and
+  325.2 ms with a ready socket, against 20 ms, 21.3 ms, 32.0 ms and 15.8 ms on CommandCode.
 - The phase `prefill` shows that a large input is cheap on both routes: an input of about 18000
   tokens gave a TTFT in the range of a short prompt.
 - The reasoning controls do not hold the model back. `thinking: {"type": "disabled"}` did not
-  stop the reasoning on CommandCode, and `thinking: enabled` spent the whole budget of the phase
-  on the reasoning on both routes.
+  stop the reasoning on CommandCode in any window; `thinking: enabled` spent the whole budget of
+  the phase on the reasoning on both routes in one window and 110 and 57 tokens in another. The
+  count of reasoning tokens of one long answer is not a property of the control.
 
 ## Limits
 

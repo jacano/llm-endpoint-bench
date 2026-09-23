@@ -8,9 +8,9 @@ The directory `results/` holds one directory for each campaign, and each of them
 
 ## Results
 
-CommandCode is faster than OpenCode (Go) on every measurement of every campaign. The gateway of OpenCode adds about 250 ms to each request with a ready socket, between 9 and 13 times the cost of CommandCode, and OpenCode decodes about 1.6 times slower in the steady state.
+CommandCode is faster than OpenCode (Go) on every measurement of every campaign. The gateway of OpenCode adds 250 to 325 ms to each request with a ready socket, nine to twenty times the cost of CommandCode, and OpenCode decodes about 1.6 times slower in the steady state.
 
-Three campaigns measured this: the first on macOS, then the same A/B test twice on Windows 11, four hours apart. The tables of each campaign, the analysis of the differences, what holds between the campaigns and the limits of the measurements are in `ANALYSIS.md`. The raw records are in `results/`.
+Four campaigns measured this: the first on macOS, then the same A/B test three times on Windows 11, twenty minutes to four hours apart. The tables of each campaign, the analysis of the differences, what holds between the campaigns and the limits of the measurements are in `ANALYSIS.md`. The raw records are in `results/`.
 
 ## Requirements
 
