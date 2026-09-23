@@ -5,10 +5,14 @@ Phases (all timed with curl + a browser UA, so no SDK retry logic hides the tail
 
   transport   DNS/TCP/TLS/TTFB on /models, fresh connection, plus three sequential
               requests in one curl invocation (reused socket) -> separates one-time
-              handshake cost from per-request gateway overhead
+              handshake cost from per-request gateway overhead; one more request
+              reads the body of /models, to confirm the model id of the route
   short       streaming, tiny answer        -> latency a user actually feels on "hi"
   long        streaming, ~600-token answer  -> TTFT split + sustained decode tok/s
   prefill     streaming, ~18k-token input   -> does TTFT grow with the prompt?
+  thinking    streaming, ~400-token answer under each reasoning control (the
+              toggle `thinking` and the parameter `reasoning_effort`) -> does the
+              route honour any of them, or does the model always reason first?
   concurrent  N parallel long requests      -> per-request and aggregate throughput
 
 Token counts always come from the response `usage` block -- never from counting SSE
@@ -52,7 +56,6 @@ ENV_FILES = [
     # Hermes Agent on Windows keeps its profile under LOCALAPPDATA.
     os.path.join(os.environ.get("LOCALAPPDATA", ""), "hermes", ".env"),
 ]
-HERMES_ENV = ENV_FILES[0]
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(HERE, "results")
 #: curl is a native program: on Windows it reads `NUL`, not the MSYS mount `/dev/null`.
@@ -63,6 +66,16 @@ PROMPT_LONG = "List the integers from 1 to 250, one per line, no other text."
 PREFILL_WORDS = 6000  # ~18k tokens of ASCII filler
 #: Below this number of content tokens, `tok_per_s_visible` is noise and is not reported.
 MIN_VISIBLE_TOKENS = 10
+#: The reasoning controls of the gateway, for the phase `thinking`. The README says
+#: that the route ignores all of them.
+THINKING_MODES = [
+    ("absent", {}),
+    ("disabled", {"thinking": {"type": "disabled"}}),
+    ("enabled", {"thinking": {"type": "enabled"}}),
+    ("effort_low", {"reasoning_effort": "low"}),
+    ("effort_high", {"reasoning_effort": "high"}),
+]
+THINKING_MAX_TOKENS = 400
 
 #: Known endpoints. `deepseek-v4.1-flash` is the same model on both routes;
 #: only the id spelling and the transport differ.
@@ -132,21 +145,21 @@ def headers(ep: dict, session_id: str | None = None) -> list[str]:
     return h
 
 
-def curl(args: list[str], body: str | None = None, timeout: int = 300):
-    t0 = time.perf_counter()
+def curl(args: list[str], body: str | None = None, timeout: int = 300) -> tuple[str, str]:
+    """Run curl and return (stdout, stderr). The phases take their own timings."""
     r = subprocess.run(args, input=body, capture_output=True, text=True, timeout=timeout)
-    return time.perf_counter() - t0, r.stdout, r.stderr
+    return r.stdout, r.stderr
 
 
 def transport(ep: dict) -> list[dict]:
-    """Fresh-connection /models timings, then a socket-reuse probe."""
+    """Fresh-connection /models timings, a socket-reuse probe, and the model id of the route."""
     recs = []
     url = ep["base_url"] + "/models"
     for i in range(3):
         args = ["curl", "-sS", "-o", NULL] + headers(ep) + \
             ["-w", "%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} "
                    "%{time_starttransfer} %{time_total}", url]
-        _, out, err = curl(args, timeout=60)
+        out, err = curl(args, timeout=60)
         p = out.split()
         if len(p) >= 6 and p[0] == "200":
             recs.append({"kind": "models", "iter": i + 1, "code": p[0],
@@ -161,10 +174,21 @@ def transport(ep: dict) -> list[dict]:
     # get glued onto them.
     args = ["curl", "-sS"] + ["-o", NULL] * 3 + headers(ep) + \
         ["-w", "%{time_starttransfer}\n", url, url, url]
-    _, out, _ = curl(args, timeout=90)
+    out, _ = curl(args, timeout=90)
     reuses = [ms(x) for x in out.split() if _is_number(x)]
     for i, t in enumerate(reuses):
         recs.append({"kind": "models_reuse", "iter": i + 1, "ttfb_ms": t})
+    # the body of /models names the model ids of the route: one request, and a
+    # results file says whether the model of this endpoint exists on this route.
+    out, err = curl(["curl", "-sS", url] + headers(ep), timeout=60)
+    try:
+        ids = [m.get("id") for m in json.loads(out).get("data", [])]
+    except Exception:
+        ids = None
+    recs.append({"kind": "models_body", "iter": 1,
+                 "n_ids": len(ids) if ids else None,
+                 "target_present": ep["model"] in ids if ids else None,
+                 "error": None if ids else (out or err).strip()[:200]})
     return recs
 
 
@@ -182,11 +206,13 @@ def ms(seconds: str) -> float:
 
 # ----------------------------------------------------------------------- streaming
 
-def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
+def stream(ep: dict, prompt: str, max_tokens: int, extra: dict | None = None) -> dict:
     """Streaming request; TTFT split + exact token counts from the trailing usage block."""
-    payload = json.dumps({"model": ep["model"], "messages": [{"role": "user", "content": prompt}],
-                          "max_tokens": max_tokens, "stream": True,
-                          "stream_options": {"include_usage": True}})
+    body = {"model": ep["model"], "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens, "stream": True,
+            "stream_options": {"include_usage": True}}
+    body.update(extra or {})  # a reasoning control, for the phase `thinking`
+    payload = json.dumps(body)
     args = ["curl", "-sS", "-N", "-X", "POST", ep["base_url"] + "/chat/completions"] + \
         headers(ep) + ["--data-binary", "@-"]
     t0 = time.perf_counter()
@@ -195,24 +221,26 @@ def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
     proc.stdin.write(payload)
     proc.stdin.close()
     first_any = first_reason = first_content = last = None
-    n_reason = n_content = n_empty = 0
+    n_reason = n_content = n_empty = n_usage = n_unparseable = 0
     usage, errsample = {}, None
     for raw in proc.stdout:
         now = time.perf_counter() - t0
         raw = raw.strip()
         if not raw.startswith("data:"):
             continue
-        body = raw[5:].strip()
-        if body == "[DONE]":
+        body_line = raw[5:].strip()
+        if body_line == "[DONE]":
             continue
-        if '"error"' in body and errsample is None:
-            errsample = body[:200]
+        if '"error"' in body_line and errsample is None:
+            errsample = body_line[:200]
         try:
-            chunk = json.loads(body)
+            chunk = json.loads(body_line)
         except Exception:
+            n_unparseable += 1
             continue
         if chunk.get("usage"):
             usage = chunk["usage"]
+            n_usage += 1
         delta = ((chunk.get("choices") or [{}])[0].get("delta")) or {}
         if delta.get("reasoning") or delta.get("reasoning_content"):
             first_any = now if first_any is None else first_any
@@ -244,6 +272,7 @@ def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
         "reasoning_tokens": reason_tok,
         "content_tokens": content_tok,
         "deltas_reasoning": n_reason, "deltas_content": n_content, "deltas_empty": n_empty,
+        "deltas_usage": n_usage, "deltas_unparseable": n_unparseable, "has_usage": bool(usage),
         "tok_per_s_total": round(out_tok / gen, 1) if (out_tok and gen) else None,
         "tok_per_s_visible": round(content_tok / vis, 1) if (content_tok and vis) else None,
         "error": errsample,
@@ -264,8 +293,17 @@ def phase_long(ep, n_concurrent, n=4):
 
 def phase_prefill(ep, n_concurrent):
     filler = " ".join("token%04d" % i for i in range(PREFILL_WORDS))
-    r = stream(ep, filler + "\n\nReply with exactly: pong", 24)
+    r = stream(ep, filler + "\n\nReply with exactly: pong", 24, extra={"thinking": {"type": "disabled"}})
     return [dict(kind="prefill", iter=1, approx_in_tokens=PREFILL_WORDS, **r)]
+
+
+def phase_thinking(ep, n_concurrent):
+    """One long answer under each reasoning control -> does the route honour any of them?"""
+    rows = []
+    for i, (mode, extra) in enumerate(THINKING_MODES):
+        r = stream(ep, PROMPT_LONG, THINKING_MAX_TOKENS, extra=extra)
+        rows.append(dict(kind="thinking_" + mode, iter=i + 1, mode=mode, **r))
+    return rows
 
 
 def phase_concurrent(ep, n_concurrent):
@@ -286,12 +324,13 @@ def phase_concurrent(ep, n_concurrent):
 
 
 PHASES = {"transport": phase_transport, "short": phase_short, "long": phase_long,
-          "prefill": phase_prefill, "concurrent": phase_concurrent}
+          "prefill": phase_prefill, "thinking": phase_thinking,
+          "concurrent": phase_concurrent}
 
 
 # ------------------------------------------------------------------------- running
 
-def run_phases(ep: dict, phases: list[str], n_concurrent: int, quiet: bool = False) -> list[dict]:
+def run_phases(ep: dict, phases: list[str], n_concurrent: int) -> list[dict]:
     recs = []
     for name in phases:
         rows = PHASES[name](ep, n_concurrent)
@@ -307,10 +346,13 @@ def summarize(r: dict) -> str:
         return "ERROR " + str(r["error"])[:120]
     if r["kind"] in ("models", "models_reuse"):
         return "code=%s tls=%s ttfb=%s" % (r.get("code", "-"), r.get("tls_ms", "-"), r.get("ttfb_ms", "-"))
+    if r["kind"] == "models_body":
+        return "n_ids=%s target_present=%s" % (r.get("n_ids"), r.get("target_present"))
     if r["kind"] == "concurrent_summary":
         return "aggregate=%.1f tok/s %.2f req/s" % (r["aggregate_tok_per_s"], r["request_per_s"])
-    return ("ttft_any=%s ttft_content=%s total=%s out=%s reason=%s tok/s=%s"
-            % (r.get("ttft_any_ms"), r.get("ttft_content_ms"), r.get("total_ms"),
+    return ("%sttft_any=%s ttft_content=%s total=%s out=%s reason=%s tok/s=%s"
+            % ("%-9s " % r["mode"] if r.get("mode") else "",
+               r.get("ttft_any_ms"), r.get("ttft_content_ms"), r.get("total_ms"),
                r.get("out_tokens"), r.get("reasoning_tokens"), r.get("tok_per_s_total")))
 
 
@@ -363,6 +405,10 @@ def report(path: str) -> None:
             print("  concurrent_summary: %s" % {m: rows[0].get(m) for m in
                                                 ("n", "wall_s", "out_tokens", "aggregate_tok_per_s", "request_per_s") if m in rows[0]})
             continue
+        elif k == "models_body":
+            print("  models_body: %s" % {m: rows[0].get(m) for m in ("n_ids", "target_present")
+                                         if m in rows[0]})
+            continue
         else:
             keys = ["ttft_any_ms", "ttft_content_ms", "total_ms", "in_tokens", "out_tokens",
                     "reasoning_tokens", "content_tokens", "tok_per_s_total", "tok_per_s_visible"]
@@ -393,6 +439,7 @@ NOISE = 0.10
 COMPARE_METRICS = {
     "models": ["dns_ms", "tcp_ms", "tls_ms", "ttfb_ms", "total_ms"],
     "models_reuse": ["ttfb_ms"],
+    "models_body": ["n_ids"],
     "concurrent_summary": ["wall_s", "out_tokens", "aggregate_tok_per_s", "request_per_s"],
 }
 COMPARE_DEFAULT = ["ttft_any_ms", "ttft_content_ms", "total_ms", "in_tokens", "out_tokens",
@@ -425,7 +472,9 @@ def compare(path_a: str, path_b: str, label_a: str | None = None, label_b: str |
         rows_b = [r for r in rb if r.get("kind") == kind]
         if not rows_a and not rows_b:
             continue
-        small = med([r.get("content_tokens") for r in rows_a])
+        small_a = med([r.get("content_tokens") for r in rows_a])
+        small_b = med([r.get("content_tokens") for r in rows_b])
+        small = min([v for v in (small_a, small_b) if v is not None], default=None)
         for key in metrics_for(kind):
             a = med([r.get(key) for r in rows_a])
             b = med([r.get(key) for r in rows_b])
