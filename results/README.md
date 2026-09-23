@@ -30,10 +30,10 @@ recorded, 15:09:37Z, the time of the file that `bench.py` wrote.
 | File | Generated (UTC) | Content |
 |---|---|---|
 | `summary.md` | - | The tables, the findings and the limits of this campaign. |
-| `commandcode_single_20260923.json` | 2026-09-23, time not recorded | The full characterization of CommandCode, with 55 records: transport, short answer, medium answer, streaming, prefill, 1 and 4 parallel requests, and the thinking toggle. |
+| `commandcode_20260923.json` | 2026-09-23, time not recorded | The full characterization of CommandCode, with 55 records: transport, short answer, medium answer, streaming, prefill, 1 and 4 parallel requests, and the thinking toggle. |
 | `ab_commandcode_20260923.json` | 2026-09-23, time not recorded | The A/B test, CommandCode side, with 18 records. |
 | `ab_opencode-go_20260923.json` | 2026-09-23, time not recorded | The A/B test, OpenCode (Go) side, with 18 records. |
-| `bench_py_example_commandcode_20260923T150937Z.json` | 2026-09-23T15:09:37Z | The output of `bench.py run` over transport, short, long, prefill and concurrent, with 19 records in the `{meta, records}` format. It is the only file of this campaign that holds a `meta` block, which names the host `jacanos-MacBook-Air.local`, and it is the only source of the row *TTFB of /models, reused connection* of `summary.md`, with its three requests over a ready socket. |
+| `commandcode_20260923T150937Z.json` | 2026-09-23T15:09:37Z | The output of `bench.py run` over transport, short, long, prefill and concurrent, with 19 records in the `{meta, records}` format. It is the only file of this campaign that holds a `meta` block, which names the host `jacanos-MacBook-Air.local`, and it is the only source of the row *TTFB of /models, reused connection* of `summary.md`, with its three requests over a ready socket. |
 
 ## 2026-09-23T153444Z
 
