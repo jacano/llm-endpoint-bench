@@ -19,7 +19,8 @@ the field `meta.started_utc`, and the header that the commands `report` and `com
 
 The three campaigns measured the same model, `deepseek-v4.1-flash`, on the two routes CommandCode
 and OpenCode (Go). Read the `summary.md` of a directory for the tables, the findings and the
-limits of that campaign.
+limits of that campaign. The analysis of the campaigns with one another, and the limits that all
+of them share, are in `../ANALYSIS.md`.
 
 ## 2026-09-23T150937Z
 

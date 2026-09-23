@@ -4,62 +4,13 @@ This repository measures three properties of an OpenAI-compatible model endpoint
 
 The tool is `bench.py`. It sends each request with `curl`, so no client library retry hides the slow end of the distribution. It reads the token counts from the `usage` block of the response.
 
-The directory `results/` holds one directory for each campaign, and each of them holds a `summary.md` and its raw records. `results/README.md` is the index of the campaigns. The campaign of the first session ran on macOS; the second and the third campaigns repeated the same test on Windows 11.
+The directory `results/` holds one directory for each campaign, and each of them holds a `summary.md` and its raw records. `results/README.md` is the index of the campaigns.
 
 ## Results
 
-CommandCode is faster than OpenCode (Go) on every measurement. The table gives the median value of each measurement. TTFB (time to the first byte) is the delay before the response starts. TTFT (time to the first token) is the delay before the model writes the first token.
+CommandCode is faster than OpenCode (Go) on every measurement of every campaign. The gateway of OpenCode adds about 250 ms to each request with a ready socket, between 9 and 13 times the cost of CommandCode, and OpenCode decodes about 1.6 times slower in the steady state.
 
-| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
-|---|---|---|---|
-| TTFB of `/models`, new connection | 47 ms | 460 ms | 9.7 times |
-| TTFB of `/models`, reused connection | 20 ms | 265 ms | 13 times |
-| Short answer: TTFT of the first token | 912 ms | 1561 ms | 1.71 times |
-| Short answer: total time | 1046 ms | 1792 ms | 1.71 times |
-| Long answer of 620 tokens: TTFT of the first visible token | 1511 ms | 3033 ms | 2.01 times |
-| Long answer of 620 tokens: total time | 2673 ms | 4948 ms | 1.85 times |
-| TPS of the sustained decoding | 360 tokens/s | 230 tokens/s | 0.64 |
-| TPS of the visible content | 439 tokens/s | 260 tokens/s | 0.59 |
-| TTFT with 18000 input tokens | 1671 ms | 3774 ms | 2.26 times |
-| 4 parallel requests: rate of one request | 378 tokens/s | 233 tokens/s | 0.62 |
-| 4 parallel requests: total rate | 947 tokens/s | 476 tokens/s | 0.50 |
-| 4 parallel requests: requests each second | 1.66 | 0.81 | 0.49 |
-
-A ratio above 1 belongs to a delay; a ratio below 1 belongs to a rate, where a large number is better.
-
-Both routes serve the same model, so the infrastructure makes the difference. The gateway of OpenCode adds about 245 ms to each request with a ready socket, which is about 13 times the cost of CommandCode. OpenCode also decodes 1.6 times slower in the steady state.
-
-OpenCode (Go) has one extra requirement. The header `x-opencode-session` is mandatory. Without the header, the endpoint answers `400 MissingSessionID`.
-
-## Results of the second campaign (Windows 11)
-
-The same A/B test ran again on a Windows 11 host through another network path. The absolute values differ, but the ratios agree with the first campaign. The full tables are in `results/2026-09-23T153444Z/summary.md`.
-
-| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
-|---|---|---|---|
-| TTFB of `/models`, reused connection | 21.3 ms | 250.7 ms | 11.8 times |
-| Short answer: TTFT of the first token | 844.0 ms | 1474.4 ms | 1.75 times |
-| Long answer of 500 visible tokens: TTFT of the first visible token | 1204.1 ms | 2843.3 ms | 2.36 times |
-| TPS of the sustained decoding | 378.0 tokens/s | 234.1 tokens/s | 0.62 |
-| 4 parallel requests: total rate | 808.6 tokens/s | 577.3 tokens/s | 0.71 |
-
-A ratio below 1 belongs to a rate, where a large number is better.
-
-The conclusion does not depend on the host: CommandCode is faster on every measurement in both campaigns.
-
-## Results of the third campaign (Windows 11, a second window)
-
-The same A/B test ran a second time on the same Windows 11 host, four hours after the second campaign, and it added the phase `thinking`. Every difference points the same way; the size of a difference moves with the queue of the provider. The full tables are in `results/2026-09-23T204204Z/summary.md`.
-
-| Measurement | CommandCode | OpenCode (Go) | OpenCode divided by CommandCode |
-|---|---|---|---|
-| TTFB of `/models`, reused connection | 32.0 ms | 291.6 ms | 9.11 |
-| Short answer: TTFT of the first token | 812.5 ms | 1784.8 ms | 2.20 |
-| Long answer of 500 visible tokens: TTFT of the first visible token | 1462.2 ms | 2429.8 ms | 1.66 |
-| TPS of the sustained decoding | 372.1 tokens/s | 234.2 tokens/s | 0.63 |
-| 4 parallel requests: total rate | 799.7 tokens/s | 478.8 tokens/s | 0.60 |
-
-The rate of the sustained decoding is the most stable value of the three campaigns: 0.64, 0.62 and 0.63 against CommandCode.
+Three campaigns measured this: the first on macOS, then the same A/B test twice on Windows 11, four hours apart. The tables of each campaign, the analysis of the differences, what holds between the campaigns and the limits of the measurements are in `ANALYSIS.md`. The raw records are in `results/`.
 
 ## Requirements
 
@@ -164,6 +115,7 @@ Hermes Agent has a provider profile for each endpoint. Set `model.provider` to `
 
 ```
 bench.py                  the runner: the phases, the A/B runner, the report, the comparison.
+ANALYSIS.md               the analysis of the results of the campaigns.
 results/                  one directory for each campaign, with its summary and its records.
 results/README.md         the index of the campaigns and the format of a result file.
 ```
@@ -178,10 +130,6 @@ results/README.md         the index of the campaigns and the format of a result 
 - In `curl`, one flag `-o` with several URLs sends the second body to standard output. The body then joins the number of the flag `-w`. Use one `-o /dev/null` for each URL, as `bench.py` does. On Windows, curl is a native program and reads `NUL` in place of the mount `/dev/null`.
 - Alternate the two endpoints in an A/B test. A sequence of all A requests and then all B requests mixes the result with the load of the provider.
 - Compare the rate in tokens, not in seconds. Two endpoints do not send the same number of tokens for the same prompt.
-
-## Limits
-
-Each campaign ran for about 10 minutes on one machine. Each measurement has 1 to 20 samples, so a difference below 10 percent is noise. The queue of the provider changes between windows: the TTFT of one endpoint went from 620 ms to 2660 ms for the same prompt. The campaign did not test retries, tool calls, or streaming with tools. A measurement becomes stale, so measure again before you change a route or a budget.
 
 ## License
 

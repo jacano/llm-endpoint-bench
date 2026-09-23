@@ -521,7 +521,7 @@ def report(path: str) -> None:
 #: Metrics where a low value is better. Every other metric is a rate.
 LOWER_IS_BETTER = {"dns_ms", "tcp_ms", "tls_ms", "ttfb_ms", "total_ms", "wall_s",
                    "ttft_any_ms", "ttft_content_ms"}
-#: A difference below this fraction is noise (see Limits in the README).
+#: A difference below this fraction is noise (see the limits in ANALYSIS.md).
 NOISE = 0.10
 
 COMPARE_METRICS = {
@@ -537,7 +537,7 @@ COMPARE_DEFAULT = ["ttft_any_ms", "ttft_content_ms", "total_ms", "in_tokens", "o
 #: a route that lists more model ids is not faster.
 NO_VERDICT = {"in_tokens", "out_tokens", "reasoning_tokens", "content_tokens", "wall_s", "n_ids"}
 #: A verdict needs this many samples behind each side. One request proves nothing, as the
-#: Limits of the README say.
+#: limits in ANALYSIS.md say.
 MIN_SAMPLES = 3
 #: Above this fraction of difference in the output tokens of the two sides, a timing or a
 #: rate of the phase measures the work of the answer as well as the route, and the tool says so.
