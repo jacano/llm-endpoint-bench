@@ -88,8 +88,13 @@ def default_out_dir() -> str:
 PROMPT_SHORT = "Reply with exactly: pong"
 PROMPT_LONG = "List the integers from 1 to 250, one per line, no other text."
 PREFILL_WORDS = 6000  # ~18k tokens of ASCII filler
-#: Below this number of content tokens, `tok_per_s_visible` is noise and is not reported.
-MIN_VISIBLE_TOKENS = 10
+#: Below this number of tokens in the numerator, a rate is noise and is not reported:
+#: `tok_per_s_total` over the output tokens, `tok_per_s_visible` over the content ones.
+MIN_RATE_TOKENS = 10
+#: The numerator of each rate, with the words for it: `tok_per_s_visible` divides by the
+#: window of the content, `tok_per_s_total` by the window of the whole answer.
+RATE_OF = {"tok_per_s_visible": ("content_tokens", "content tokens"),
+           "tok_per_s_total": ("out_tokens", "output tokens")}
 #: The reasoning controls of the gateway, for the phase `thinking`. The README says
 #: that the route ignores all of them.
 THINKING_MODES = [
@@ -452,6 +457,20 @@ def med(vals):
     return round(st.median(vals), 1) if vals else None
 
 
+def thin_answer(key: str, *rowsets: list[dict]) -> str | None:
+    """The words of the numerator when a rate rests on too few tokens, else None.
+
+    Every rowset given must hold enough tokens: a rate that one side of a comparison
+    cannot support is not a rate for either side.
+    """
+    if key not in RATE_OF:
+        return None
+    field, words = RATE_OF[key]
+    counts = [med([r.get(field) for r in rows]) for rows in rowsets if rows]
+    counts = [c for c in counts if c is not None]
+    return words if (counts and min(counts) < MIN_RATE_TOKENS) else None
+
+
 def report(path: str) -> None:
     recs = load_records(path)
     clean = [r for r in recs if not r.get("error")]
@@ -481,16 +500,16 @@ def report(path: str) -> None:
             keys = ["ttft_any_ms", "ttft_content_ms", "total_ms", "in_tokens", "out_tokens",
                     "reasoning_tokens", "content_tokens", "tok_per_s_total", "tok_per_s_visible"]
         print("  %-18s n=%d" % (k, len(rows)))
-        small = med([r.get("content_tokens") for r in rows])
         for key in keys:
             vals = [r.get(key) for r in rows]
             m = med(vals)
             if m is None:
                 continue
-            if key == "tok_per_s_visible" and small is not None and small < MIN_VISIBLE_TOKENS:
+            words = thin_answer(key, rows)
+            if words:
                 # a rate over two or three tokens is a large number without meaning
-                print("      %-18s skipped: the answer holds fewer than %d content tokens"
-                      % (key, MIN_VISIBLE_TOKENS))
+                print("      %-18s skipped: the answer holds fewer than %d %s"
+                      % (key, MIN_RATE_TOKENS, words))
                 continue
             nums = [v for v in vals if isinstance(v, (int, float))]
             print("      %-18s median %-9s min %-9s max %-9s" % (key, m, round(min(nums), 1), round(max(nums), 1)))
@@ -536,30 +555,29 @@ def compare(path_a: str, path_b: str, label_a: str | None = None, label_b: str |
     print("")
     print("| Kind | Metric | %s | %s | %s / %s | Better |" % (la, lb, lb, la))
     print("|---|---|---|---|---|---|")
-    hidden = []
+    hidden = {}
     for kind in ks:
         rows_a = [r for r in ra if r.get("kind") == kind]
         rows_b = [r for r in rb if r.get("kind") == kind]
         if not rows_a and not rows_b:
             continue
-        small_a = med([r.get("content_tokens") for r in rows_a])
-        small_b = med([r.get("content_tokens") for r in rows_b])
-        small = min([v for v in (small_a, small_b) if v is not None], default=None)
         for key in metrics_for(kind):
             a = med([r.get(key) for r in rows_a])
             b = med([r.get(key) for r in rows_b])
             if a is None and b is None:
                 continue
-            if key == "tok_per_s_visible" and small is not None and small < MIN_VISIBLE_TOKENS:
-                hidden.append(kind)
+            words = thin_answer(key, rows_a, rows_b)
+            if words:
+                hidden.setdefault(key, [set(), words])[0].add(kind)
                 continue
             ratio = round(b / a, 2) if (a and b) else None
             print("| %s | %s | %s | %s | %s | %s |" % (kind, key, fmt(a), fmt(b), fmt(ratio),
                                                        verdict(key, a, b, la, lb)))
-    if hidden:
+    for key in sorted(hidden):
+        kinds_hidden, words = hidden[key]
         print("")
-        print("`tok_per_s_visible` is not shown for %s: the median answer of the phase holds "
-              "fewer than %d content tokens." % (", ".join(sorted(set(hidden))), MIN_VISIBLE_TOKENS))
+        print("`%s` is not shown for %s: the median answer of the phase holds fewer than "
+              "%d %s." % (key, ", ".join(sorted(kinds_hidden)), MIN_RATE_TOKENS, words))
     print("")
     print("The column `%s / %s` is the value of %s divided by the value of %s. "
           "A difference below %d percent shows `same`. The column `Better` stays empty for a "

@@ -90,9 +90,9 @@ The TPS of the sustained decoding is again about 1.6 times lower on OpenCode
   `ttft_content_ms` is absent on that side. The value `ttft_any_ms` is correct on both
   sides.
 - The value `tok_per_s_visible` has no meaning for an answer of 3 tokens, because the result
-  is a large number. The command `report` does not print the value for a phase whose median
-  answer holds fewer than 10 content tokens, so the `short` phase of this campaign has no
-  value. Read this value for long answers only.
+  is a large number. The tool prints neither rate for a phase whose median answer holds fewer
+  than 10 output tokens or fewer than 10 content tokens, so the `short` phase of this campaign
+  holds no value of `tok_per_s_visible`. Read a rate for long answers only.
 - The campaign did not test retries, tool calls, or streaming with tools.
 
 ## Raw data in this directory

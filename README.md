@@ -150,7 +150,8 @@ Hermes Agent has a provider profile for each endpoint. Set `model.provider` to `
 - `ttft_any_ms` is the delay before the first delta of any kind, reasoning or content.
 - `ttft_content_ms` is the delay before the first visible token. The difference between this value and `ttft_any_ms` is the delay that a user sees as a slow start.
 - `tok_per_s_total` is `completion_tokens` divided by the time between the first delta and the last delta. The value includes the reasoning tokens.
-- `tok_per_s_visible` is the number of content tokens divided by the time of the content phase. Do not read this value for an answer of 2 or 3 tokens, because the result is a large number without meaning. The tool does not print the value for a phase whose median answer holds fewer than 10 content tokens, and the command `compare` hides the line.
+- `tok_per_s_visible` is the number of content tokens divided by the time of the content phase.
+- A rate needs a numerator. The tool prints neither rate for a phase whose median answer holds fewer than 10 output tokens (`tok_per_s_total`) or fewer than 10 content tokens (`tok_per_s_visible`): a rate over 2 or 3 tokens is a large number without meaning. The command `report` skips that line, and `compare` hides it when either side falls below the number.
 - `models_reuse.ttfb_ms` is the TTFB with a ready socket. The value is the fixed cost of the gateway for each request.
 - `models_body.n_ids` is the number of model ids of the route, and `models_body.target_present` says whether the model of this endpoint is one of them.
 - `concurrent_summary.aggregate_tok_per_s` is the number of tokens of all requests divided by the wall clock time.
