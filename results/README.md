@@ -1,13 +1,17 @@
 # The results of the campaigns
 
-One directory holds one campaign. The name of the directory is the date and the host of the
-campaign, as in `2026-09-23-macos`. Each directory holds one `summary.md` and the raw records
+One directory holds one campaign. Each directory holds one `summary.md` and the raw records
 that the summary cites.
 
-The time of a run matters, and it stays with the file. A file that `bench.py` writes names
-the time of the run in three places: the name of the file (`<endpoint>_<UTC>.json`, and
-`ab_<endpoint>_<UTC>.json` for a side of an A/B test), the field `meta.started_utc` inside,
-and the header that the commands `report` and `compare` print.
+The time of a run matters, and it stays with the directory and with the file. A run writes its
+files into a directory that is named for the time of the run, as in
+`2026-09-23T161050Z-windows`, so a second run of the same day cannot mix with the first one.
+Inside the directory, a file names the time of the run in three places: the name of the file
+(`<endpoint>_<UTC>.json`, and `ab_<endpoint>_<UTC>.json` for a side of an A/B test), the field
+`meta.started_utc`, and the header that the commands `report` and `compare` print.
+
+The first two campaigns below came before that rule, so their directories are named for the
+date and the operating system, and not for the time of the run.
 
 | Directory | Host | Client | Records | Finding |
 |---|---|---|---|---|
@@ -59,34 +63,44 @@ The `meta` block names the time in UTC, the host, the endpoint, the model and th
 made it. A record does not repeat the time, because every record of a file belongs to the one
 run that the `meta` block names.
 
-## How to read a file
+## How to read a directory
 
-Both commands print the time and the host of a file before the numbers, so a comparison of
-two files always says which two runs it compares. A file without a `meta` block prints
+Both commands print the time and the host of a file before the numbers, so a comparison of two
+files always says which two runs it compares. A file without a `meta` block prints
 `no meta block: the file records no time of the run`.
 
 ```bash
-# the time, the median, the minimum and the maximum of one file
-python3 bench.py report results/2026-09-23-windows/ab_opencode-go_20260923T153444Z.json
+# each file of a campaign, with the time of each one
+python3 bench.py report results/2026-09-23-windows
 
-# one markdown table for the two sides of an A/B test
-python3 bench.py compare results/2026-09-23-windows/ab_commandcode_20260923T153444Z.json \
-                       results/2026-09-23-windows/ab_opencode-go_20260923T153444Z.json
+# the two sides of the last run in a directory
+python3 bench.py compare results/2026-09-23-windows
+
+# two files of your choice, in this order
+python3 bench.py compare results/2026-09-23-macos/ab_commandcode_20260923.json \
+                       results/2026-09-23-macos/ab_opencode-go_20260923.json
 ```
+
+`compare` on a directory takes the newest file of each of the two endpoints that the directory
+holds. Two runs of the same day in one directory are therefore no problem: the command compares
+the newest pair, and it prints the time of each file, so the table says which run it holds. A
+directory with more than two endpoints makes the command stop and name the tags that it found,
+because the pair of an A/B test is then your choice and not a guess of the tool.
 
 ## How to add a campaign
 
-Give the new campaign its own directory, and point the run at it with `--out-dir`. The name
-of each result file carries the time of the run by itself:
+A run makes its own directory, and the name of that directory carries the time of the run:
 
 ```bash
 python3 bench.py ab --a commandcode --b opencode-go \
-  --phases transport,short,long,prefill,thinking,concurrent --n 4 --concurrent 4 \
-  --out-dir results/2026-09-24-macos
+  --phases transport,short,long,prefill,thinking,concurrent --n 4 --concurrent 4
+# -> results/2026-09-24T091533Z-macos/ab_commandcode_20260924T091533Z.json
+#    results/2026-09-24T091533Z-macos/ab_opencode-go_20260924T091533Z.json
 ```
 
-Two campaigns of the same day on the same host need two directories: add the time of the run
-to the name of the second one, as in `2026-09-24T1012Z-macos`.
+A campaign of more than one command takes one directory: give the same `--out-dir` to every
+command of it, as in `--out-dir results/2026-09-24T091533Z-macos`. The name of that directory
+then holds the time of the first command of the campaign.
 
 Then write the `summary.md` of the directory from the files, add one row to the table at the
 top of this file, and add the generation time of each file to the table of its directory.

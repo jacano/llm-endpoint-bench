@@ -28,12 +28,14 @@ Examples
     python bench.py compare results/2026-09-23-windows/ab_commandcode_20260923T153444Z.json \
         results/2026-09-23-windows/ab_opencode-go_20260923T153444Z.json
 
-A result file lands in results/ by default. Give --out-dir to collect the files of one
-campaign in one directory, as in results/2026-09-23-windows/. See results/README.md for
-the layout of that directory and for the format of a result file. The name of a file is
-<endpoint>_<UTC>.json, and ab_<endpoint>_<UTC>.json for a side of an A/B test: the time of
+Each run writes its files into a new directory `results/<date>T<time>Z-<os>/`, so a second run
+of the same day cannot mix with the first one. Give --out-dir to put the files of several
+commands in one directory of a campaign, as in results/2026-09-23-windows/. The name of a file
+is <endpoint>_<UTC>.json, and ab_<endpoint>_<UTC>.json for a side of an A/B test: the time of
 the run stays in the name of the file and in its `meta` block. The commands `report` and
-`compare` print that time.
+`compare` print that time, and both accept a directory: `report` on a directory reports every
+file of it, and `compare` on a directory compares the two sides of the last run in it. See
+results/README.md for the layout of a campaign directory.
 
 Any other OpenAI-compatible endpoint:
     python bench.py run --base-url https://api.example.com/v1 --model vendor/model \
@@ -50,6 +52,7 @@ import concurrent.futures as cf
 import json
 import os
 import platform
+import re
 import statistics as st
 import subprocess
 import sys
@@ -68,6 +71,20 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(HERE, "results")
 #: curl is a native program: on Windows it reads `NUL`, not the MSYS mount `/dev/null`.
 NULL = "NUL" if os.name == "nt" else "/dev/null"
+#: The name of the operating system in a directory name.
+OS_NAMES = {"Windows": "windows", "Darwin": "macos", "Linux": "linux"}
+
+
+def default_out_dir() -> str:
+    """The directory of this run: results/<date>T<time>Z-<os>/.
+
+    The time in the name keeps the files of two runs apart, so a second run of
+    the same day cannot mix with the first one. Give --out-dir to put the files
+    of more than one command in one directory of a campaign.
+    """
+    stamp = time.strftime("%Y-%m-%dT%H%M%SZ", time.gmtime())
+    os_name = OS_NAMES.get(platform.system(), platform.system().lower()) or "unknown"
+    return os.path.join(RESULTS, "%s-%s" % (stamp, os_name))
 
 PROMPT_SHORT = "Reply with exactly: pong"
 PROMPT_LONG = "List the integers from 1 to 250, one per line, no other text."
@@ -405,6 +422,37 @@ def generation_line(path: str) -> str:
         m.get("model", "?"), ",".join(m.get("phases") or []))
 
 
+#: The stamp that the tool puts at the end of a file name.
+STAMP = re.compile(r"^(\d{8}(?:T\d{6}Z)?)$")
+
+
+def tag_and_stamp(name: str) -> tuple[str | None, str | None]:
+    """Split `ab_commandcode_20260923T153444Z.json` into its tag and its stamp."""
+    stem = name[:-5] if name.endswith(".json") else name
+    head, _, tail = stem.rpartition("_")
+    if head and STAMP.match(tail):
+        return head, tail
+    return None, None
+
+
+def dir_pair(directory: str) -> tuple[str, str]:
+    """The newest result file of each tag in a directory: the pair of the last run."""
+    if not os.path.isdir(directory):
+        sys.exit("compare: %s is not a directory" % directory)
+    tags: dict[str, list] = {}
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".json"):
+            continue
+        tag, stamp = tag_and_stamp(name)
+        if tag:
+            tags.setdefault(tag, []).append((stamp, os.path.join(directory, name)))
+    if len(tags) != 2:
+        sys.exit("compare: %s holds %d tag(s) (%s). Name the two files of the pair."
+                 % (directory, len(tags), ", ".join(sorted(tags)) or "none"))
+    pair = [max(rows)[1] for _, rows in sorted(tags.items())]
+    return pair[0], pair[1]
+
+
 def med(vals):
     vals = [v for v in vals if isinstance(v, (int, float))]
     return round(st.median(vals), 1) if vals else None
@@ -557,7 +605,8 @@ def cmd_ab(args) -> None:
                     print("  %-14s %-10s [%d] %s" % (ep["name"], phase, i + 1, summarize(r)), flush=True)
                 out[ep["name"]] += rows
     for ep in (a, b):
-        path = write_results(out[ep["name"]], ep, phases, args.out_dir, prefix="ab_")
+        path = write_results(out[ep["name"]], ep, phases, args.out_dir or default_out_dir(),
+                             prefix="ab_")
         print("wrote", path)
 
 
@@ -571,9 +620,27 @@ def cmd_run(args) -> None:
     phases = args.phases.split(",")
     print("endpoint=%s model=%s phases=%s" % (ep["name"], ep["model"], phases))
     recs = run_phases(ep, phases, args.concurrent)
-    path = write_results(recs, ep, phases, args.out_dir)
+    path = write_results(recs, ep, phases, args.out_dir or default_out_dir())
     print("wrote", path)
     report(path)
+
+
+def cmd_report(args) -> None:
+    """Print the report of each file that you name, or of each file of a directory."""
+    for path in args.files:
+        if os.path.isdir(path):
+            for name in sorted(os.listdir(path)):
+                if name.endswith(".json"):
+                    report(os.path.join(path, name))
+        else:
+            report(path)
+
+
+def cmd_compare(args) -> None:
+    """Compare two files, or the two sides of the last run in one directory."""
+    a, b = (args.a, args.b) if args.b else dir_pair(args.a)
+    compare(a, b, args.label_a, args.label_b,
+            args.kinds.split(",") if args.kinds else None)
 
 
 def main() -> None:
@@ -594,7 +661,8 @@ def main() -> None:
     r.add_argument("--phases", default="transport,short,long,prefill",
                    help="csv of: %s" % ",".join(PHASES))
     r.add_argument("--concurrent", type=int, default=4, help="parallel requests for `concurrent`")
-    r.add_argument("--out-dir", help="directory of the result file (default: results/)")
+    r.add_argument("--out-dir", help="directory of the result file (default: one directory "
+                                     "for each run, results/<date>T<time>Z-<os>/)")
     r.set_defaults(func=cmd_run)
 
     a = sub.add_parser("ab", help="interleaved A/B between two endpoints")
@@ -603,21 +671,22 @@ def main() -> None:
     a.add_argument("--phases", default="transport,short,long")
     a.add_argument("--n", type=int, default=4, help="rounds for short/long")
     a.add_argument("--concurrent", type=int, default=4)
-    a.add_argument("--out-dir", help="directory of the result files (default: results/)")
+    a.add_argument("--out-dir", help="directory of the result files (default: one directory "
+                                     "for each run, results/<date>T<time>Z-<os>/)")
     a.set_defaults(func=cmd_ab)
 
-    p = sub.add_parser("report", help="aggregate a results file")
-    p.add_argument("files", nargs="+")
-    p.set_defaults(func=lambda args: [report(f) for f in args.files])
+    p = sub.add_parser("report", help="aggregate a results file, or each file of a directory")
+    p.add_argument("files", nargs="+", help="results files, or directories that hold them")
+    p.set_defaults(func=cmd_report)
 
     c = sub.add_parser("compare", help="markdown table of two results files, side by side")
-    c.add_argument("a", help="results file of the first endpoint")
-    c.add_argument("b", help="results file of the second endpoint")
+    c.add_argument("a", help="results file of the first endpoint, or a directory of one run")
+    c.add_argument("b", nargs="?",
+                   help="results file of the second endpoint (omit it if a is a directory)")
     c.add_argument("--label-a", help="name of the first endpoint in the table")
     c.add_argument("--label-b", help="name of the second endpoint in the table")
     c.add_argument("--kinds", help="csv of the phases to compare (default: all)")
-    c.set_defaults(func=lambda args: compare(args.a, args.b, args.label_a, args.label_b,
-                                             args.kinds.split(",") if args.kinds else None))
+    c.set_defaults(func=cmd_compare)
 
     args = ap.parse_args()
     if args.cmd == "list":
