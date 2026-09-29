@@ -35,6 +35,7 @@ Examples
     python bench.py run --endpoint commandcode --phases short,long
     python bench.py report results/2026-09-23T210256Z
     python bench.py compare results/2026-09-23T210256Z
+    python bench.py latest --write README.md
 
 To measure another route, add it to ENDPOINTS: the set of endpoints is data, and every command
 reads it. Each run writes its files into a new directory `results/<date>T<time>Z/`, named for
@@ -965,6 +966,154 @@ def cmd_compare(args) -> None:
     compare(a, b)
 
 
+# -------------------------------------------------------------------- the latest
+
+#: The two markers that hold the table of `latest` inside a document. The command replaces what
+#: stands between them and touches nothing else, so the table of a README is one command away
+#: from the records and a reader of it never reads a hand-kept number.
+LATEST_BEGIN = "<!-- latest:begin -->"
+LATEST_END = "<!-- latest:end -->"
+
+
+def latest_rows(directory: str) -> list[dict]:
+    """The newest result file of each endpoint under a results tree, with the medians of its phases.
+
+    One row for each endpoint that any file measures, taken from the newest file that measures it:
+    a round of one endpoint does not hide the rows of the rounds before it, and every row carries
+    the time of its own round, because two rows of one table may come from two different rounds and
+    the absolute values of two rounds are not directly comparable.
+    """
+    rows = {}
+    for name in sorted(os.listdir(directory)):
+        sub = os.path.join(directory, name)
+        if not os.path.isdir(sub):
+            continue
+        for fname in sorted(os.listdir(sub)):
+            if not fname.endswith(".json"):
+                continue
+            path = os.path.join(sub, fname)
+            try:
+                meta = load_meta(path)
+                recs = [r for r in load_records(path) if not r.get("error")]
+            except Exception:
+                continue
+            if not recs:
+                continue
+            ep = meta.get("endpoint") or recs[0].get("endpoint")
+            if not ep:
+                continue
+            by_kind = {}
+            for r in recs:
+                by_kind.setdefault(str(r.get("kind")), []).append(r)
+            stamp = str(meta.get("started_utc") or name)
+
+            def m(kind, key):
+                return med([r.get(key) for r in by_kind.get(kind, [])])
+
+            row = {
+                "endpoint": ep, "api": str(meta.get("api", OPENAI)), "model": meta.get("model", "?"),
+                "stamp": stamp, "round": name, "file": fname,
+                "short_ttft": m("short", "ttft_content_ms"),
+                "long_ttft": m("long", "ttft_content_ms"),
+                "long_total": m("long", "total_ms"),
+                "decode": m("long", "tok_per_s_total"),
+                "visible": m("long", "tok_per_s_visible"),
+                "par_one": m("concurrent_4", "tok_per_s_total"),
+                "par_all": m("concurrent_summary", "aggregate_tok_per_s"),
+                "edge": m("models_reuse", "ttfb_ms"),
+                "out_tokens": m("long", "out_tokens"),
+                "reasoning": m("long", "reasoning_tokens"),
+                "content": m("long", "content_tokens"),
+                "n_short": present(by_kind.get("short", []), "ttft_content_ms"),
+                "n_long": present(by_kind.get("long", []), "ttft_content_ms"),
+            }
+            if ep not in rows or stamp > rows[ep]["stamp"]:
+                rows[ep] = row
+    return list(rows.values())
+
+
+def latest_table(rows: list[dict], by: str = "short") -> str:
+    """The markdown of the one table: a line for each endpoint, fastest first.
+
+    The order is the delay of a short answer, the row that a user feels; `by` asks for another
+    one. An endpoint that never measured that row goes last, with a dash in every cell it cannot
+    fill, which is the same rule that `report` and `compare` follow.
+    """
+    order = {"short": ("short_ttft", False), "long": ("long_ttft", False),
+             "decode": ("decode", True), "visible": ("visible", True),
+             "total": ("long_total", False)}
+    key, reverse = order.get(by, order["short"])
+    rows = sorted(rows, key=lambda r: (r.get(key) is None,
+                                       (r.get(key) if r.get(key) is not None else 0.0) *
+                                       (-1 if reverse else 1)))
+    out = ["| Endpoint | Surface | Round (UTC) | Short: TTFT visible | Long: TTFT visible | Long: "
+           "total | Long: decode | Long: visible | 4 parallel: one | 4 parallel: total | Long: "
+           "output tokens | TTFB, ready socket |",
+           "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for r in rows:
+        cells = [cell(r["short_ttft"], "ms"), cell(r["long_ttft"], "ms"),
+                 cell(r["long_total"], "ms"), cell(r["decode"], "tokens/s"),
+                 cell(r["visible"], "tokens/s"), cell(r["par_one"], "tokens/s"),
+                 cell(r["par_all"], "tokens/s"), cell(r["out_tokens"]), cell(r["edge"], "ms")]
+        out.append("| `%s` | %s | %s | %s |" % (r["endpoint"], r["api"], pretty_stamp(r["stamp"]),
+                                                " | ".join(cells)))
+    newest = max((r["stamp"] for r in rows), default="?")
+    out.append("")
+    out.append("%d endpoints across %d rounds under `results/`, fastest short answer first. Each "
+               "row comes from the newest file that measures that endpoint, and the newest round of "
+               "the tree is %s; a row names its own round, so two rows of this table can come from "
+               "two rounds and the absolute values of two rounds are not directly comparable "
+               "(`ANALYSIS.md` states that limit). `Long: output tokens` is the median work of that "
+               "phase: read a rate beside it, and prefer the rate of the visible content when the "
+               "work of two rows differs by more than a fifth. `TTFB, ready socket` is the "
+               "per-request cost of the edge, the row that separates the two halves of a route."
+               % (len(rows), len({r["round"] for r in rows}), pretty_stamp(newest)))
+    return "\n".join(out)
+
+
+def cell(v, unit: str = "") -> str:
+    """A value of the table, or a dash where the surface or the phase holds none."""
+    if v is None:
+        return "-"
+    return ("%g %s" % (v, unit)).strip()
+
+
+def pretty_stamp(stamp: str) -> str:
+    """`20260929T115801Z` reads as `2026-09-29 11:58Z` in a table."""
+    if len(stamp) >= 15 and stamp[8] == "T":
+        return "%s-%s-%s %s:%sZ" % (stamp[0:4], stamp[4:6], stamp[6:8], stamp[9:11], stamp[11:13])
+    return stamp
+
+
+def write_block(path: str, block: str) -> None:
+    """Replace the text between the two markers of a document with `block`, and nothing else."""
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    if LATEST_BEGIN not in text or LATEST_END not in text:
+        sys.exit("latest: %s holds no %s ... %s pair to fill" % (path, LATEST_BEGIN, LATEST_END))
+    head, _, rest = text.partition(LATEST_BEGIN)
+    _, _, tail = rest.partition(LATEST_END)
+    new = head + LATEST_BEGIN + "\n" + block.rstrip() + "\n" + LATEST_END + tail
+    if new == text:
+        print("unchanged", path)
+        return
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(new)
+    print("updated", path)
+
+
+def cmd_latest(args) -> None:
+    """Print the one table of the newest results, and fill it into a document on request."""
+    rows = latest_rows(args.dir)
+    if not rows:
+        sys.exit("latest: no result file under %s" % args.dir)
+    block = latest_table(rows, args.by)
+    if args.write:
+        write_block(args.write, block)
+    else:
+        print(block)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1000,6 +1149,16 @@ def main() -> None:
     c.add_argument("b", nargs="?",
                    help="results file of the second endpoint (omit it if a is a directory)")
     c.set_defaults(func=cmd_compare)
+
+    l = sub.add_parser("latest", help="one table of the newest results of every endpoint")
+    l.add_argument("--dir", default=RESULTS, help="the results tree to read (default: results/)")
+    l.add_argument("--by", default="short",
+                   choices=["short", "long", "total", "decode", "visible"],
+                   help="the row that orders the table, fastest first (default: short)")
+    l.add_argument("--write", metavar="FILE",
+                   help="fill the table into FILE between the markers %s and %s"
+                        % (LATEST_BEGIN, LATEST_END))
+    l.set_defaults(func=cmd_latest)
 
     args = ap.parse_args()
     if args.cmd == "list":

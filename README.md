@@ -18,7 +18,28 @@ only.
 
 Three routes serve one model, `deepseek-v4.1-flash`: the API of the vendor of that model, on two
 surfaces, and two gateways that resell it, CommandCode under two model ids and OpenCode (Go). Ten
-rounds measured them on one Windows 11 host, and the tool makes four comparisons of them:
+rounds measured them on one Windows 11 host.
+
+### The newest results of every endpoint
+
+<!-- latest:begin -->
+| Endpoint | Surface | Round (UTC) | Short: TTFT visible | Long: TTFT visible | Long: total | Long: decode | Long: visible | 4 parallel: one | 4 parallel: total | Long: output tokens | TTFB, ready socket |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `deepseek-official` | openai-completions | 2026-09-29 11:58Z | 801.6 ms | 1581.3 ms | 2648.4 ms | 367.6 tokens/s | 442.7 tokens/s | 368.2 tokens/s | 930.8 tokens/s | 635 | 253.3 ms |
+| `deepseek-official-messages` | anthropic-messages | 2026-09-29 07:45Z | 820.2 ms | 1284.4 ms | 2422.6 ms | 356.5 tokens/s | - | 361.8 tokens/s | 672.9 tokens/s | 642 | 289.7 ms |
+| `commandcode-fast` | openai-completions | 2026-09-29 11:58Z | 1110.7 ms | 1343.7 ms | 2500.4 ms | 370.1 tokens/s | 446.6 tokens/s | 361.4 tokens/s | 808.6 tokens/s | 590 | 15.9 ms |
+| `commandcode` | openai-completions | 2026-09-29 11:58Z | 1851.4 ms | 3718.2 ms | 5647.6 ms | 217.8 tokens/s | 247.9 tokens/s | 206.2 tokens/s | 447.4 tokens/s | 896 | 16.4 ms |
+| `opencode-go` | openai-completions | 2026-09-23 21:23Z | 1913.3 ms | 2043.5 ms | 4006.4 ms | 260.3 tokens/s | 291.9 tokens/s | 243.6 tokens/s | 423.9 tokens/s | 569 | 296.8 ms |
+
+5 endpoints across 3 rounds under `results/`, fastest short answer first. Each row comes from the newest file that measures that endpoint, and the newest round of the tree is 2026-09-29 11:58Z; a row names its own round, so two rows of this table can come from two rounds and the absolute values of two rounds are not directly comparable (`ANALYSIS.md` states that limit). `Long: output tokens` is the median work of that phase: read a rate beside it, and prefer the rate of the visible content when the work of two rows differs by more than a fifth. `TTFB, ready socket` is the per-request cost of the edge, the row that separates the two halves of a route.
+<!-- latest:end -->
+
+That table is written by the tool and not by hand: `python bench.py latest --write README.md` reads
+the newest result file of each endpoint under `results/` and fills in what stands between those two
+markers, leaving every other line of this file alone. The numbers of this page are therefore one
+command away from the records that back them.
+
+### What the four comparisons found
 
 - **CommandCode against OpenCode (Go)**, four rounds on 2026-09-23, twenty minutes to four hours
   apart. CommandCode is faster on every measurement of every round: the gateway of OpenCode adds 250
@@ -107,6 +128,8 @@ python bench.py ab --a deepseek-official --b deepseek-official-messages   # the 
 python bench.py run --endpoint deepseek-official-messages      # one surface on its own
 python bench.py report results/2026-09-23T210256Z              # one file, or every file of a directory
 python bench.py compare results/2026-09-23T210256Z             # the two sides of the last run in it
+python bench.py latest                                         # one table of the newest results
+python bench.py latest --by decode --write README.md           # ... and fill it into the document
 python bench.py compare results/2026-09-29T064339Z/ab_commandcode_20260929T064339Z.json \
                        results/2026-09-29T064339Z/ab_deepseek-official_20260929T064339Z.json
 ```
@@ -120,6 +143,14 @@ arrives. Files land in a new directory named for the time of the run in UTC,
 `results/<date>T<time>Z/`, so a second run of the same day cannot mix with the first one;
 `--out-dir` puts the files of several commands in one directory of a round. `run --endpoint NAME`
 measures one route on its own.
+
+`latest` reads the whole `results/` tree and prints **one table of the newest results of every
+endpoint**: one line per endpoint, taken from the newest file that measures it, fastest short answer
+first (or `--by long`, `total`, `decode`, `visible`). Every line names its own round, because two
+lines of that table can come from two rounds. With `--write FILE` the command fills that table into
+the file between the markers `<!-- latest:begin -->` and `<!-- latest:end -->` and touches nothing
+else, which is how the table in the Results section of this file is kept from going stale: it is one
+command away from the records and no line of it is hand-kept.
 
 ## Phases
 

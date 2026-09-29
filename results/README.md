@@ -217,6 +217,32 @@ the newest pair, and it prints the time of each file, so the table says which ru
 directory with more than two endpoints makes the command stop and name the tags that it found,
 because the pair of an A/B test is then your choice and not a guess of the tool.
 
+## The newest results of every endpoint
+
+The whole tree holds more rounds than a reader wants to open one by one, so one command reads all of
+them and prints one table:
+
+```bash
+# one line per endpoint, from the newest file that measures it, fastest short answer first
+python bench.py latest
+
+# the same table, filled into the front page between its two markers
+python bench.py latest --write ../README.md
+```
+
+The command takes, for each endpoint that any file of the tree measures, the newest file that
+measures it, and reduces the phases of that file to one line: the delay of a short answer, the delay
+to the first visible token of a long answer, the total time of that answer, the two rates, the rate
+under load, the aggregate rate, the work of the long phase in output tokens, and the TTFB with a
+ready socket. It sorts by the row that a user feels and names the round of every line, because two
+lines of one table can come from two rounds and the absolute values of two rounds are not directly
+comparable. `--by` orders the table by another row.
+
+The table of the front page of this repository is that command and not a hand-kept copy: it stands
+between the markers `<!-- latest:begin -->` and `<!-- latest:end -->` in `../README.md`, and
+`--write` replaces what stands between them and leaves the rest of the file alone. Run it after a
+round lands.
+
 ## How to add a round
 
 A run makes its own directory, and the name of that directory carries the time of the run:
