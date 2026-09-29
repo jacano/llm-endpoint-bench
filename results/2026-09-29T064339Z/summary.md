@@ -118,10 +118,8 @@ The vendor route was measured alone 7 minutes before this A/B
   that matches, and the tool says so under its table. Read a rate of those phases with that in hand.
 - The comparison crosses no day: every round of it started on 2026-09-29 between 06:28Z and 06:43Z on
   this host. It still measures the state of two routes at two moments, not a property of them.
-- The vendor route here is the OpenAI-compatible surface, `POST /v1/chat/completions`. The desktop
-  agent of this host uses the Messages surface of the same service, `POST /anthropic/v1/messages`,
-  which `bench.py` does not speak; `../2026-09-29T063619Z/summary.md` states what that surface was
-  read to do.
+- The two sides are read through the OpenAI-compatible surface, `POST /v1/chat/completions`, which is
+  the only surface that `bench.py` speaks.
 - The round did not test retries, tool calls, or streaming with tools.
 - The keys of the two routes are read from the environment of the process or from `.env` beside the
   tool, which is in `.gitignore`; no result file and no summary holds one.

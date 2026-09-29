@@ -1,37 +1,30 @@
 # llm-endpoint-bench
 
 `bench.py` measures one model endpoint against another: latency, throughput, and tokens per second.
-An endpoint names one **surface** of a route, and the tool speaks the two that gateways serve:
-
-- `openai-completions` — `POST /chat/completions`, the shape of the OpenAI API. The token counts of
-  the answer, with the reasoning split out of them, arrive in a trailing `usage` block.
-- `anthropic-messages` — `POST /v1/messages`, the shape of the Anthropic Messages API, with the key
-  in `x-api-key` and a version header. The counts arrive split in two, the input at `message_start`
-  and the output at `message_delta`; that surface reports no reasoning split, so the rows that need
-  one (`reasoning_tokens`, `content_tokens`, `tok_per_s_visible`) are absent from a round of it.
+An endpoint is one service under one model id, and the tool speaks the OpenAI-compatible surface of
+it: `POST /chat/completions`, with the token counts of the answer and the reasoning split out of
+them in a trailing `usage` block.
 
 It sends each request with `curl`, so no client library hides the slow end of the distribution, and
-it reads each token count from the response of the surface. It uses the standard library of Python
-only.
+it reads each token count from that block. It uses the standard library of Python only.
 
 ## Results
 
-Three routes serve one model, `deepseek-v4.1-flash`: the API of the vendor of that model, on two
-surfaces, and two gateways that resell it, CommandCode under two model ids and OpenCode (Go). Ten
-rounds measured them on one Windows 11 host.
+Three routes serve one model, `deepseek-v4.1-flash`: the API of the vendor of that model and two
+gateways that resell it, CommandCode under two model ids and OpenCode (Go). Nine rounds measured
+them on one Windows 11 host.
 
 ### The newest results of every endpoint
 
 <!-- latest:begin -->
-| Endpoint | Surface | Round (UTC) | Short: TTFT visible | Long: TTFT visible | Long: total | Long: decode | Long: visible | 4 parallel: one | 4 parallel: total | Long: output tokens | TTFB, ready socket |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| `deepseek-official` | openai-completions | 2026-09-29 11:58Z | 801.6 ms | 1581.3 ms | 2648.4 ms | 367.6 tokens/s | 442.7 tokens/s | 368.2 tokens/s | 930.8 tokens/s | 635 | 253.3 ms |
-| `deepseek-official-messages` | anthropic-messages | 2026-09-29 07:45Z | 820.2 ms | 1284.4 ms | 2422.6 ms | 356.5 tokens/s | - | 361.8 tokens/s | 672.9 tokens/s | 642 | 289.7 ms |
-| `commandcode-fast` | openai-completions | 2026-09-29 11:58Z | 1110.7 ms | 1343.7 ms | 2500.4 ms | 370.1 tokens/s | 446.6 tokens/s | 361.4 tokens/s | 808.6 tokens/s | 590 | 15.9 ms |
-| `commandcode` | openai-completions | 2026-09-29 11:58Z | 1851.4 ms | 3718.2 ms | 5647.6 ms | 217.8 tokens/s | 247.9 tokens/s | 206.2 tokens/s | 447.4 tokens/s | 896 | 16.4 ms |
-| `opencode-go` | openai-completions | 2026-09-23 21:23Z | 1913.3 ms | 2043.5 ms | 4006.4 ms | 260.3 tokens/s | 291.9 tokens/s | 243.6 tokens/s | 423.9 tokens/s | 569 | 296.8 ms |
+| Endpoint | Round (UTC) | Short: TTFT visible | Long: TTFT visible | Long: total | Long: decode | Long: visible | 4 parallel: one | 4 parallel: total | Long: output tokens | TTFB, ready socket |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `deepseek-official` | 2026-09-29 11:58Z | 801.6 ms | 1581.3 ms | 2648.4 ms | 367.6 tokens/s | 442.7 tokens/s | 368.2 tokens/s | 930.8 tokens/s | 635 | 253.3 ms |
+| `commandcode-fast` | 2026-09-29 11:58Z | 1110.7 ms | 1343.7 ms | 2500.4 ms | 370.1 tokens/s | 446.6 tokens/s | 361.4 tokens/s | 808.6 tokens/s | 590 | 15.9 ms |
+| `commandcode` | 2026-09-29 11:58Z | 1851.4 ms | 3718.2 ms | 5647.6 ms | 217.8 tokens/s | 247.9 tokens/s | 206.2 tokens/s | 447.4 tokens/s | 896 | 16.4 ms |
+| `opencode-go` | 2026-09-23 21:23Z | 1913.3 ms | 2043.5 ms | 4006.4 ms | 260.3 tokens/s | 291.9 tokens/s | 243.6 tokens/s | 423.9 tokens/s | 569 | 296.8 ms |
 
-5 endpoints across 3 rounds under `results/`, fastest short answer first. Each row comes from the newest file that measures that endpoint, and the newest round of the tree is 2026-09-29 11:58Z; a row names its own round, so two rows of this table can come from two rounds and the absolute values of two rounds are not directly comparable (`ANALYSIS.md` states that limit). `Long: output tokens` is the median work of that phase: read a rate beside it, and prefer the rate of the visible content when the work of two rows differs by more than a fifth. `TTFB, ready socket` is the per-request cost of the edge, the row that separates the two halves of a route.
+4 endpoints across 2 rounds under `results/`, fastest short answer first. Each row comes from the newest file that measures that endpoint, and the newest round of the tree is 2026-09-29 11:58Z; a row names its own round, so two rows of this table can come from two rounds and the absolute values of two rounds are not directly comparable (`ANALYSIS.md` states that limit). `Long: output tokens` is the median work of that phase: read a rate beside it, and prefer the rate of the visible content when the work of two rows differs by more than a fifth. `TTFB, ready socket` is the per-request cost of the edge, the row that separates the two halves of a route.
 <!-- latest:end -->
 
 That table is written by the tool and not by hand: `python bench.py latest --write README.md` reads
@@ -39,7 +32,7 @@ the newest result file of each endpoint under `results/` and fills in what stand
 markers, leaving every other line of this file alone. The numbers of this page are therefore one
 command away from the records that back them.
 
-### What the four comparisons found
+### What the three comparisons found
 
 - **CommandCode against OpenCode (Go)**, four rounds on 2026-09-23, twenty minutes to four hours
   apart. CommandCode is faster on every measurement of every round: the gateway of OpenCode adds 250
@@ -51,12 +44,6 @@ command away from the records that back them.
   sustained decode of 367.6 tokens/s against 217.8. The edge of the vendor route is expensive and
   its model is fast; the gateway of CommandCode is the other way round, so a route is not faster
   than another without naming the half of it that you pay for.
-- **The two surfaces of the vendor service against each other**, one interleaved round on
-  2026-09-29. Every row of a phase of the model comes out `same` within 10 percent — a short answer
-  at 673.6 against 695.4 ms and a sustained decode of 367.2 against 356.5 tokens/s — so the surface a
-  client speaks does not change what the model costs. What it changes is what a client can read: the
-  Messages surface reports no reasoning split, and three rows of its side of the table have no value
-  at all.
 - **The two model ids of CommandCode and the vendor, in one session of three**, on 2026-09-29. The
   fast tier of the reseller beats its normal tier by 1.70 to 1.81 times on the rates and 1.67 to 2.78
   times on the delays — a short answer at 0.94 s against 1.78 s — and then lands on the vendor of the
@@ -94,38 +81,31 @@ desktop program — it is copied into that `.env` file by hand, which is one ste
 with no dependency of its own. The tool prints the name of the key variable and the place it came
 from, never the value.
 
-| Endpoint | API | Base URL | Model | Key variable |
-|---|---|---|---|---|
-| `commandcode` | `openai-completions` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4.1-flash` | `COMMANDCODE_API_KEY` |
-| `commandcode-fast` | `openai-completions` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4.1-flash-fast` | `COMMANDCODE_API_KEY` |
-| `opencode-go` | `openai-completions` | `https://opencode.ai/zen/go/v1` | `deepseek-v4.1-flash` | `OPENCODE_GO_API_KEY`, or `OPENCODE_API_KEY` |
-| `deepseek-official` | `openai-completions` | `https://api.deepseek.com/v1` | `deepseek-flash` | `DEEPSEEK_API_KEY` |
-| `deepseek-official-messages` | `anthropic-messages` | `https://api.deepseek.com/anthropic` | `deepseek-flash` | `DEEPSEEK_API_KEY` |
+| Endpoint | Base URL | Model | Key variable |
+|---|---|---|---|
+| `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4.1-flash` | `COMMANDCODE_API_KEY` |
+| `commandcode-fast` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4.1-flash-fast` | `COMMANDCODE_API_KEY` |
+| `opencode-go` | `https://opencode.ai/zen/go/v1` | `deepseek-v4.1-flash` | `OPENCODE_GO_API_KEY`, or `OPENCODE_API_KEY` |
+| `deepseek-official` | `https://api.deepseek.com/v1` | `deepseek-flash` | `DEEPSEEK_API_KEY` |
 
 `opencode-go` also requires the header `x-opencode-session`. The first two rows are two tiers of one
-reseller on one base URL: the same service under two model ids, which the catalog prices
-differently. The last two rows are the two surfaces of one service, the API of the vendor of the
-model that the gateways resell: `/v1` is its OpenAI-compatible path and `/anthropic` its Messages
-path. An endpoint takes **one** surface and one model, so a service of two takes two entries, and
-the tool can then put the two of them against each other as readily as two providers.
-
-`python bench.py list` prints this table and says whether each key resolves and where it found it. A
-route other than these five takes one entry in `ENDPOINTS` at the top of `bench.py`:
+reseller on one base URL: the same service under two model ids, which the catalog prices differently.
+The last row is the API of the vendor of the model that the gateways resell, with no reseller in the
+path. `python bench.py list` prints this table and says whether each key resolves and where it found
+it. A route other than these four takes one entry in `ENDPOINTS` at the top of `bench.py`:
 
 ```python
 "example": {"base_url": "https://api.example.com/v1", "model": "vendor/model-id",
-            "api": OPENAI,  # or MESSAGES for a surface of the shape of POST /v1/messages
             "key_env": "EXAMPLE_API_KEY", "key_env_alt": ["EXAMPLE_KEY"], "session_header": False},
 ```
 
 ## How to run it
 
 ```bash
-python bench.py list                                           # the endpoints, their surfaces and their keys
+python bench.py list                                           # the endpoints and their keys
 python bench.py ab --a commandcode --b opencode-go --n 4       # the A/B test, all four phases
 python bench.py ab --a commandcode --b deepseek-official --c commandcode-fast   # a round of three
-python bench.py ab --a deepseek-official --b deepseek-official-messages   # the two surfaces of one service
-python bench.py run --endpoint deepseek-official-messages      # one surface on its own
+python bench.py run --endpoint deepseek-official               # one route on its own
 python bench.py report results/2026-09-23T210256Z              # one file, or every file of a directory
 python bench.py compare results/2026-09-23T210256Z             # the two sides of the last run in it
 python bench.py latest                                         # one table of the newest results
@@ -156,7 +136,7 @@ command away from the records and no line of it is hand-kept.
 
 | Phase | Requests | Purpose |
 |---|---|---|
-| `transport` | 3 new connections, 3 requests with a reused socket, 1 body request | Separates the handshake from the per-request overhead of the edge, and confirms that the model id of the endpoint exists on the route. A route of the Messages surface lists no model ids, so the probe of that phase is the smallest message the surface takes, one token and streamed: its TTFB then holds the first event of the model as well as the edge, and each record names its probe |
+| `transport` | 3 new connections, 3 requests with a reused socket, 1 body request | Separates the handshake from the per-request overhead of the edge, and confirms that the model id of the endpoint exists on the route |
 | `short` | 5 streaming requests, `max_tokens=64` | The delay that a user feels on a short answer |
 | `long` | 4 streaming requests, `max_tokens=1200` | The split of the TTFT and the sustained rate |
 | `concurrent` | 4 parallel long answers | The rate of one request and the total rate under load |
@@ -173,10 +153,10 @@ command away from the records and no line of it is hand-kept.
   prompt are not compared by it alone. `compare` says so under its table when the two sides differ
   by more than a fifth; the row that survives that case is `tok_per_s_visible`, which divides the
   same visible answer by the time on both sides.
-- A surface reports what it reports. The Messages one carries no reasoning split, so
-  `reasoning_tokens`, `content_tokens` and `tok_per_s_visible` have no value in a round of it:
-  `report` names them as not reported, and `compare` names them when one side of its table holds a
-  value and the other cannot.
+- A phase can hold no value for a row: an answer that wrote no visible token has no delay to its
+  first one, and an answer a connection cut has no counts at all. `report` names those rows under
+  the phase, and `compare` names the ones that are empty on one side of its table, so a dash is
+  never read as a zero.
 - `compare` prints the median of each metric of the two sides, the quotient, the number of samples
   of each side, and the faster endpoint. It names no winner for a count, for a difference below 10
   percent, or for a phase of fewer than 3 samples, and it hides a rate whose median answer is too
@@ -201,9 +181,6 @@ aggregations of the first session are the commands `report` and `compare`.
   and a rate computed from a non-streaming answer is not correct.
 - OpenCode (Go) requires the header `x-opencode-session`, else the answer is `400 MissingSessionID`,
   and it refuses `urllib` of Python with `403`: send a browser user agent, as `bench.py` does.
-- An endpoint is one surface of one service. The API of the vendor of the model answers on both of
-  the surfaces that this tool speaks, at `/v1` and at `/anthropic`, and each takes an entry of its
-  own; a table that ranges one of them says nothing about the other.
 - A stream that carries no delta is a fault and not a fast answer, and a gateway that refuses one
   answers `200` or `403` with a JSON object where the stream should be. The tool reads the status of
   every streaming request, records such a request as an error with the status and a sample of the

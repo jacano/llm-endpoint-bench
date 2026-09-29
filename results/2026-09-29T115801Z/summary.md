@@ -135,11 +135,10 @@ holidays excluded). This round ran at 11:58Z, outside that window.
 
 | File | Generated (UTC) | Content |
 |---|---|---|
-| `ab_commandcode_20260929T115801Z.json` | 2026-09-29T11:58:01Z | `commandcode`, 48 records, `api` = `openai-completions`. |
-| `ab_commandcode-fast_20260929T115801Z.json` | 2026-09-29T11:58:01Z | `commandcode-fast`, 48 records, `api` = `openai-completions`. |
-| `ab_deepseek-official_20260929T115801Z.json` | 2026-09-29T11:58:01Z | `deepseek-official`, 48 records, `api` = `openai-completions`. |
+| `ab_commandcode_20260929T115801Z.json` | 2026-09-29T11:58:01Z | `commandcode`, 48 records, phases transport, short, long and concurrent. |
+| `ab_commandcode-fast_20260929T115801Z.json` | 2026-09-29T11:58:01Z | `commandcode-fast`, 48 records and the same phases. |
+| `ab_deepseek-official_20260929T115801Z.json` | 2026-09-29T11:58:01Z | `deepseek-official`, 48 records and the same phases. |
 
 `compare` takes any two of the three by name. The rounds of this morning are in
 `../2026-09-29T062827Z/`, `../2026-09-29T062914Z/`, `../2026-09-29T063619Z/` and
-`../2026-09-29T064339Z/`, and the two surfaces of the vendor are in `../2026-09-29T074529Z/`;
-`../README.md` indexes all of them and `../../ANALYSIS.md` compares them.
+`../2026-09-29T064339Z/`; `../README.md` indexes all of them and `../../ANALYSIS.md` compares them.

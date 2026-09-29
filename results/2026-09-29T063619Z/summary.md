@@ -102,10 +102,8 @@ and at the transport of neither.
 - The comparison crosses the six days and the two days of the rounds it cites: a different hour and
   a different load of the provider. Read a quotient of two rounds as the state of the route at two
   moments, not as a property of the route.
-- The round measures the OpenAI-compatible surface of the vendor route, `POST /v1/chat/completions`.
-  The other surface of the same service, `POST /anthropic/v1/messages`, is measured by the round of
-  `../2026-09-29T074529Z/`, which the tool speaks as well now: `bench.py` takes the surface of an
-  endpoint in its `ENDPOINTS` entry, and a service of two surfaces takes two entries.
+- The round measures the vendor route through the OpenAI-compatible surface, `POST
+  /v1/chat/completions`, which is the only surface that `bench.py` speaks.
 - The round did not test retries, tool calls, or streaming with tools.
 - The key of the route lives in `.env` beside the tool, which is in `.gitignore`; no result file and
   no summary holds it.
