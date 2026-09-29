@@ -1,17 +1,32 @@
 # The analysis of the results
 
-Four rounds measured the same model, `deepseek-v4.1-flash`, on two routes, CommandCode and
-OpenCode (Go), on one Windows 11 host, between 15:34Z and 21:23Z on 2026-09-23.
+Eight rounds measured one model, `deepseek-v4.1-flash`, on one Windows 11 host, over three routes:
+the API of the vendor of the model itself, and two gateways that resell it, CommandCode and
+OpenCode (Go). Four rounds on 2026-09-23 measured the two resold routes against each other, between
+15:34Z and 21:23Z. Four rounds on 2026-09-29 measured one or two of the three routes each, between
+06:28Z and 06:43Z: the two resold routes fell to about half their rate of six days before on the
+CommandCode side, and the vendor route was measured for the first time.
 This file holds their tables, what the differences come from, what holds between the rounds, and
 the limits of the measurements.
+
+| Route | Endpoint of `bench.py` | Base URL | Model id on the wire |
+|---|---|---|---|
+| The vendor of the model | `deepseek-official` | `https://api.deepseek.com/v1` | `deepseek-flash` |
+| A reseller, CommandCode | `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4.1-flash` |
+| A reseller, OpenCode (Go) | `opencode-go` | `https://opencode.ai/zen/go/v1` | `deepseek-v4.1-flash` |
 
 The raw records and the full tables of each round are in `results/`, which `results/README.md`
 indexes:
 
-- `results/2026-09-23T153444Z/` — the first round.
+- `results/2026-09-23T153444Z/` — the first round: CommandCode against OpenCode (Go).
 - `results/2026-09-23T204204Z/` — the second round, four hours later.
 - `results/2026-09-23T210256Z/` — the third round, twenty minutes after the second one.
 - `results/2026-09-23T212350Z/` — the fourth round, twenty-one minutes after the third one.
+- `results/2026-09-29T062827Z/` — the fifth round, six days later, one route only (CommandCode).
+- `results/2026-09-29T062914Z/` — the sixth round, 47 seconds after the fifth one, same route.
+- `results/2026-09-29T063619Z/` — the seventh round, the vendor route alone.
+- `results/2026-09-29T064339Z/` — the eighth round, the vendor route against CommandCode, in an
+  interleaved A/B.
 
 The tool that produced them is `bench.py`; the README states it.
 
@@ -99,7 +114,187 @@ CommandCode wrote 684 output tokens for its long answer where OpenCode wrote 569
 that rate grew by a fifth, and the extra tokens are mostly reasoning. The two answers held the
 same visible content, 500 tokens against 499, and there CommandCode wrote 1.54 times faster.
 
+## The rounds of 2026-09-29
+
+### CommandCode on its own
+
+Two rounds measured one route, CommandCode, six days after the four rounds of 09-23 and on the same
+host. They ran `bench.py run --endpoint commandcode`, back to back, 47 seconds apart, so no second
+route is in play and no ratio between routes exists in them. What they do show is which half of the
+route moved. The full tables are in `results/2026-09-29T062827Z/summary.md` and
+`results/2026-09-29T062914Z/summary.md`.
+
+| Measurement of CommandCode | 09-23, four rounds | 09-29, two rounds | 09-29 divided by 09-23 |
+|---|---|---|---|
+| TLS handshake, new connection | 37.9 to 42.0 ms | 33.3 and 38.6 ms | 0.86 to 0.99 |
+| TTFB of `/models`, reused connection | 15.8 to 32.0 ms | 14.0 and 14.6 ms | 0.72 to 0.96 |
+| Short answer: TTFT of the first token | 753.8 to 844.0 ms | 1616.9 and 1638.7 ms | 2.01 to 2.03 |
+| Long answer: TTFT of the visible token | 1204.1 to 1677.2 ms | 2758.0 and 3426.9 ms | 1.89 to 2.36 |
+| Long answer: total time | 2375.4 to 2839.3 ms | 5197.1 and 5611.7 ms | 1.94 to 2.08 |
+| Long answer: TPS of the sustained decoding | 362.9 to 378.0 tokens/s | 185.4 and 192.4 tokens/s | 0.50 to 0.52 |
+| Long answer: TPS of the visible content | 438.9 to 446.3 tokens/s | 224.2 and 227.7 tokens/s | 0.50 to 0.51 |
+| 4 parallel requests: rate of one request | 360.5 to 379.6 tokens/s | 199.8 and 201.6 tokens/s | 0.53 to 0.55 |
+| 4 parallel requests: total rate | 808.6 to 901.8 tokens/s | 409.7 and 481.6 tokens/s | 0.48 to 0.56 |
+
+- The transport of the route did not move. The handshake, the DNS, the TCP connect and the TTFB of
+  `/models` with a ready socket sit at the fast end of the range that the four rounds of 09-23 hold,
+  and the reused-socket TTFB, 14.0 and 14.6 ms, is the lowest value that this host has recorded.
+- The model side of the same route is about twice as slow. Every delay of the model is 1.9 to 2.4
+  times its value of 09-23, and every rate of the model is 0.50 to 0.55 of its value of 09-23.
+- The two families are independent, and that is the finding. A gateway that charges 14 ms for a
+  request cannot explain a short answer of 1.6 s where the same route answered in 0.8 s six days
+  before, nor a decode of 190 tokens/s where it decoded at 370.
+- The fall is not less work in the answer. The `long` answers of the two rounds hold 499 and 500
+  visible tokens for the same prompt, the same as every round of 09-23, and 621.5 and 651 output
+  tokens of which 122.5 and 152 were reasoning, inside the range of those rounds. The route
+  decodes the same content at half the rate, and it takes twice as long to write the first token
+  of it.
+- Within the two rounds of 09-29 the stable rows are the ones a user feels on a short answer and
+  under load: the short TTFT (1616.9 against 1638.7 ms), the sustained rate (192.4 against 185.4
+  tokens/s) and the rate of one request under 4 parallel requests (199.8 against 201.6 tokens/s)
+  agree within 2 to 4 percent. The delay to the first visible token of a long answer is the one row
+  that does not, 2758.0 against 3426.9 ms, and the cause is visible in the record: the answer of
+  the second round spent 152 reasoning tokens before it turned visible, against 122.5 in the first,
+  with a worst sample of 277. The slow start of a long answer follows the reasoning that precedes
+  it, not the route.
+- 4 parallel requests still hold the rate of one request on this route: 199.8 and 201.6 tokens/s
+  under load against 192.4 and 185.4 tokens/s for one request, and an aggregate of 2.1 and 2.6
+  times the rate of one request.
+
+The two rounds of 09-29 measured one hour of one day, six days after the rounds they are compared
+against, and the load of a provider at that hour is not known. A difference of two times is far
+outside the 10 percent noise of these measurements, so the direction is solid; the exact quotient
+is not. Measure again before you change a route or a budget.
+
+### The vendor route of the model
+
+The seventh round measured the route of the vendor itself, and the eighth measured it against
+CommandCode in one interleaved session, seven minutes later. The commands were:
+
+```
+python bench.py run --endpoint deepseek-official
+python bench.py ab --a deepseek-official --b commandcode --n 4
+```
+
+The vendor route is the API of the vendor of the model, `https://api.deepseek.com/v1` with the id
+`deepseek-flash`; the other two routes resell that same model under the ids
+`deepseek/deepseek-v4.1-flash` and `deepseek-v4.1-flash`. The full tables are in
+`results/2026-09-29T063619Z/summary.md` and `results/2026-09-29T064339Z/summary.md`.
+
+| Measurement of the vendor route | 06:36Z, alone | 06:43Z, in the A/B |
+|---|---|---|
+| DNS of `/models` | 6.1 ms | 11.8 ms |
+| TCP connect, new connection | 14.6 ms | 20.4 ms |
+| TLS handshake, new connection | 27.4 ms | 33.0 ms |
+| TTFB of `/models`, new connection | 283.9 ms | 282.8 ms |
+| TTFB of `/models`, reused connection | 252.9 ms | 260.7 ms |
+| Short answer: TTFT of the first token | 779.1 ms | 653.8 ms |
+| Short answer: TTFT of the visible token | 910.7 ms | 784.4 ms |
+| Short answer: total time | 913.9 ms | 790.7 ms |
+| Long answer: TTFT of the first token | 644.5 ms | 692.8 ms |
+| Long answer: TTFT of the visible token | 1054.7 ms | 1670.4 ms |
+| Long answer: total time | 2212.3 ms | 2766.7 ms |
+| Long answer: TPS of the sustained decoding | 372.5 tokens/s | 373.2 tokens/s |
+| Long answer: TPS of the visible content | 439.1 tokens/s | 440.9 tokens/s |
+| 4 parallel requests: rate of one request | 320.5 tokens/s | 386.0 tokens/s |
+| 4 parallel requests: total rate | 788.7 tokens/s | 1067.7 tokens/s |
+
+The A/B of 06:43Z is the comparison that this file could not make before it: the route of the vendor
+of the model against a route that resells it, in one session, so the load of the provider hit both
+the same way.
+
+| Measurement | CommandCode | Vendor route | CommandCode divided by the vendor route |
+|---|---|---|---|
+| DNS of `/models` | 8.2 ms | 11.8 ms | 0.69 |
+| TCP connect, new connection | 17.9 ms | 20.4 ms | 0.88 |
+| TLS handshake, new connection | 36.1 ms | 33.0 ms | 1.09 (same) |
+| TTFB of `/models`, new connection | 54.3 ms | 282.8 ms | 5.21 |
+| TTFB of `/models`, reused connection | 18.5 ms | 260.7 ms | 14.09 |
+| Short answer: TTFT of the first token | 1651.6 ms | 653.8 ms | 2.53 |
+| Short answer: TTFT of the visible token | 1795.9 ms | 784.4 ms | 2.29 |
+| Short answer: total time | 1802.7 ms | 790.7 ms | 2.28 |
+| Long answer: TTFT of the first token | 1820.8 ms | 692.8 ms | 2.63 |
+| Long answer: TTFT of the visible token | 3497.6 ms | 1670.4 ms | 2.09 |
+| Long answer: total time | 5652.9 ms | 2766.7 ms | 2.04 |
+| Long answer: TPS of the sustained decoding | 201.0 tokens/s | 373.2 tokens/s | 0.54 |
+| Long answer: TPS of the visible content | 238.8 tokens/s | 440.9 tokens/s | 0.54 |
+| 4 parallel requests: rate of one request | 199.8 tokens/s | 386.0 tokens/s | 0.52 |
+| 4 parallel requests: total rate | 356.7 tokens/s | 1067.7 tokens/s | 0.33 |
+
+- The two families of measurement split, and they split in opposite directions. CommandCode wins
+  every row of the transport, and by 14.09 times on a ready socket. The vendor route wins every row
+  of the model: 2.04 to 2.63 times on the delays and 1.85 times on the rates. A route is therefore
+  not faster or slower than the other; it is cheaper before the model runs and dearer inside it.
+- The gain of the vendor route is not a cheap edge, and the edge is not the handshake. Its TLS
+  handshake, 27.4 ms in the round of 06:36, is the cheapest that this host has recorded, and the two
+  rows that resolve the name and open the socket are 8.2 against 11.8 ms and 17.9 against 20.4 ms,
+  too small to hold the wait that follows them. What the vendor route pays is the wait after the
+  connection is ready: 252.9 to 260.7 ms before the model is asked anything, against 14.0 to
+  18.5 ms on CommandCode. On a short answer the model of the vendor route writes its first token
+  393 ms after that wait, where the model behind CommandCode writes it 1633 ms after its own.
+- That is why the vendor route wins the row a user feels even while it loses the transport: the
+  short answer is written in 653.8 ms against 1651.6 ms, and the wait of 260.7 ms is inside the
+  second that separates them. What a user pays for the cheaper edge of CommandCode is a model that
+  starts a second later and decodes at 201.0 tokens/s against 373.2.
+- The rate of the visible content is the row to trust for the rates of that A/B, because the two
+  sides did not write the same work: in `concurrent_4` the vendor route wrote 1122 output tokens of
+  which 622 were reasoning, against 635.5 and 136.5 on CommandCode, and the aggregate rate of
+  2.99 times therefore measures the answers as well as the routes. The visible content is the same
+  500 tokens on both sides, and its rate, 1.87 times, carries no such caveat.
+- 4 parallel requests do not cost the vendor route its rate in this round: 386.0 tokens/s for one
+  request under load against 373.2 tokens/s for one long answer alone. The round of 06:36, seven
+  minutes before, held a fall of 14 percent on that row. Read the two together as a range of the
+  queue of the provider, not as a property of the route.
+- The rates of the vendor route are stable across the seven minutes between its two rounds, 372.5
+  then 373.2 tokens/s and 439.1 then 440.9, and its short answer is not: 779.1 ms then 653.8 ms, a
+  move of 16 percent. CommandCode held its own short answer across the same morning, 1616.9, 1638.7
+  and 1651.6 ms, and its rate, 185.4 to 201.0 tokens/s.
+
+### The three routes on the morning of 2026-09-29
+
+| Measurement | CommandCode 06:28Z | CommandCode 06:29Z | Vendor 06:36Z | CommandCode 06:43Z | Vendor 06:43Z |
+|---|---|---|---|---|---|
+| TTFB of `/models`, reused connection | 14.6 ms | 14.0 ms | 252.9 ms | 18.5 ms | 260.7 ms |
+| Short answer: TTFT of the first token | 1616.9 ms | 1638.7 ms | 779.1 ms | 1651.6 ms | 653.8 ms |
+| Long answer: TTFT of the visible token | 2758.0 ms | 3426.9 ms | 1054.7 ms | 3497.6 ms | 1670.4 ms |
+| Long answer: total time | 5197.1 ms | 5611.7 ms | 2212.3 ms | 5652.9 ms | 2766.7 ms |
+| Long answer: TPS of the sustained decoding | 192.4 tokens/s | 185.4 tokens/s | 372.5 tokens/s | 201.0 tokens/s | 373.2 tokens/s |
+| Long answer: TPS of the visible content | 224.2 tokens/s | 227.7 tokens/s | 439.1 tokens/s | 238.8 tokens/s | 440.9 tokens/s |
+| 4 parallel requests: rate of one request | 199.8 tokens/s | 201.6 tokens/s | 320.5 tokens/s | 199.8 tokens/s | 386.0 tokens/s |
+
+- The transport rows of the two routes repeat across the morning, 14.0 to 18.5 ms against 252.9 to
+  260.7 ms, a quotient of 13.7 to 18.6 between them: that difference is a property of the two routes
+  on this host, not of the hour.
+- The rates of the model repeat as well: 185.4 to 201.0 tokens/s on CommandCode against 372.5 to
+  373.2 on the vendor route, and 224.2 to 238.8 against 439.1 to 440.9 on the visible content.
+- The delay to the first visible token of a long answer is the row that moves most on both sides,
+  2758.0 to 3497.6 ms on CommandCode and 1054.7 to 1670.4 ms on the vendor route, and the cause is
+  in the records: it follows the reasoning that precedes the visible text, which ran from 36 to 722
+  tokens across the answers of the A/B.
+
+### OpenCode (Go) could not be measured on 2026-09-29
+
+A third A/B of that morning, `python bench.py ab --a commandcode --b opencode-go --n 4`, was started
+and stopped: every completion of the OpenCode (Go) side came back `403` with the body
+`An active OpenCode Go subscription is required to use Go models`. The key of that route on that
+machine resolves, and its `/models` answers `200` with 30 model ids, of which `deepseek-v4.1-flash`
+is one, so a round of it would carry a transport table and no model at all. No round file was
+written for it, and every comparison of OpenCode (Go) in this file is therefore the one of
+2026-09-23, six days before these rounds.
+
+That round is also the one that found the two defects of the runner that this file's later rounds
+depend on: a refused stream was recorded as a clean row of nulls, because the tool read only lines
+that start with `data:` and the body of the refusal is one JSON object; and the tool could not see a
+key that the user set for the whole account on Windows, because the registry value does not reach
+the environment of a process that a desktop app started. `bench.py` now reads the status of each
+streaming request, records a stream that carries no delta as an error with the status and a sample
+of the body beside it, and looks for a key in the environment, in the user environment of Windows
+and in a `.env` file, in that order.
+
+
 ## What holds between the rounds
+
+The four rounds of 2026-09-23 hold the table of the two resold routes against each other.
 
 The direction of every difference is the same in all four rounds. The size of a difference moves
 with the queue of the provider, and two families of measurement move differently.
@@ -148,6 +343,22 @@ a ratio without a verdict. A difference below 10 percent is noise. The queue of 
 changes between rounds: the TTFT of one endpoint went from 620 ms to 2660 ms for the same prompt.
 The absolute values of two rounds are not comparable, because the host, the network path and the hour differ; compare the ratios only. The round did not test retries, tool calls, or streaming
 with tools. A measurement becomes stale, so measure again before you change a route or a budget.
+
+- The rounds of 2026-09-29 measure three routes inside a quarter of an hour of one morning, so the
+  ratios of the eighth round hold two routes at one moment, not a property of either route.
+- Two of those rounds compare routes that do not write the same number of output tokens for the same
+  prompt: in the A/B of 06:43Z the `long` phase differs by 8 percent (698 against 646.5 output
+  tokens) and the `concurrent_4` phase by 77 percent (635.5 against 1122, of which 136.5 against 622
+  are reasoning). The tool prints that under its table; the rate of the visible content is the row
+  that survives it, because it divides the same visible answer by the time on both sides.
+- The vendor route is measured on its OpenAI-compatible surface, `POST /v1/chat/completions`. The
+  Messages surface of the same service, `POST /anthropic/v1/messages`, which the desktop agent of
+  that host uses, is not a surface that `bench.py` speaks: it was read separately, outside this
+  repository, on the same host at 06:39Z, on 5 short and 4 long answers of the same two prompts, and
+  its delay to the first token agreed with the round of 06:36Z within 8 percent, 724.8 against
+  779.1 ms.
+- OpenCode (Go) holds no round of 2026-09-29: its subscription refused every completion of that day
+  while the transport of the route went on answering. Its rows in this file come from 2026-09-23.
 
 The `summary.md` of each round states the limits of that round, including the phases of it
 that hold too few tokens for a rate.

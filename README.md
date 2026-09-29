@@ -7,40 +7,73 @@ the standard library of Python only.
 
 ## Results
 
-CommandCode is faster than OpenCode (Go) on every measurement of every round. The gateway of
-OpenCode adds 250 to 325 ms to each request with a ready socket, nine to twenty times the cost of
-CommandCode, and OpenCode decodes about 1.6 times slower in the steady state.
+Three routes serve one model, `deepseek-v4.1-flash`: the API of the vendor of that model, and two
+gateways that resell it, CommandCode and OpenCode (Go). Eight rounds measured them on one Windows 11
+host, and the tool makes two comparisons of them:
 
-Four rounds measured this on one Windows 11 host, twenty minutes to four hours apart. Their
-tables, the analysis of the differences and the limits of the measurements are in `ANALYSIS.md`;
-the raw records are in `results/`, and `results/README.md` indexes them.
+- **CommandCode against OpenCode (Go)**, four rounds on 2026-09-23, twenty minutes to four hours
+  apart. CommandCode is faster on every measurement of every round: the gateway of OpenCode adds 250
+  to 325 ms to each request with a ready socket, nine to twenty times the cost of CommandCode, and
+  OpenCode decodes about 1.6 times slower in the steady state.
+- **The vendor route against CommandCode**, one interleaved round on 2026-09-29. CommandCode wins
+  every row of the transport, 18.5 ms against 260.7 ms for a request on a ready socket, and the
+  vendor route wins every row of the model: a short answer at 0.65 s of TTFT against 1.65 s, and a
+  sustained decode of 373.2 tokens/s against 201.0. The edge of the vendor route is expensive and
+  its model is fast; the gateway of CommandCode is the other way round, so a route is not faster
+  than another without naming the half of it that you pay for.
+
+The rounds of 2026-09-29 also measured the CommandCode route alone at 06:28Z and 06:29Z, six days
+after the four rounds before it: its transport held at the fast end of its range and the model side
+of it ran at about half the rate, 192.4 and 185.4 tokens/s against 362.9 to 378.0, and a short
+answer at 1.62 and 1.64 s of TTFT against 0.75 to 0.84 s. OpenCode (Go) could not be measured that
+day: its subscription refused every completion with `403` while the transport of the route went on
+answering.
+
+The tables of each round, the analysis of the differences and the limits of the measurements are in
+`ANALYSIS.md`; the raw records are in `results/`, and `results/README.md` indexes them.
 
 ## Requirements
 
-`python` and `curl`, and a key of each endpoint, in the environment or in a `.env` file in the
-directory of the tool (which is already in `.gitignore`). A machine where the Hermes Agent desktop
-app holds the keys is read too, from the profile of that app: that is the only tie between the two
-programs. The tool prints the name of a key variable only, never its value.
+`python` and `curl`, and a key of each endpoint that you measure. A key is looked for in four
+places, and the first one that holds it wins:
 
-| Endpoint | Base URL | Key variable | Extra header |
-|---|---|---|---|
-| `commandcode` | `https://api.commandcode.ai/provider/v1` | `COMMANDCODE_API_KEY` | none |
-| `opencode-go` | `https://opencode.ai/zen/go/v1` | `OPENCODE_GO_API_KEY` | `x-opencode-session` |
+| Place | Note |
+|---|---|
+| The environment of the process | A `COMMANDCODE_API_KEY=... python bench.py list` wins over everything |
+| The user environment of Windows | The registry value of `HKCU\Environment`, which a process that a desktop app started does not inherit |
+| A `.env` file beside the tool | Already in `.gitignore`, and the place to put a key for one route |
+| The profile of the Hermes Agent desktop app | Its two `.env` paths are read; its credential pool holds a fingerprint and not a value |
 
-`python bench.py list` prints this table and says whether each key resolves. A route other than
-these two takes one entry in `ENDPOINTS` at the top of `bench.py`:
+The tool prints the name of the key variable and the place it came from, never the value.
+
+| Endpoint | Base URL | Model | Key variable | Extra header |
+|---|---|---|---|---|
+| `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4.1-flash` | `COMMANDCODE_API_KEY` | none |
+| `opencode-go` | `https://opencode.ai/zen/go/v1` | `deepseek-v4.1-flash` | `OPENCODE_GO_API_KEY`, or `OPENCODE_API_KEY` | `x-opencode-session` |
+| `deepseek-official` | `https://api.deepseek.com/v1` | `deepseek-flash` | `DEEPSEEK_API_KEY` | none |
+
+The last row is the API of the vendor of the model, which the two gateways above resell: the same
+model with no reseller in the path, under the id that the vendor gives it. `python bench.py list`
+prints this table and says whether each key resolves and where it found it. A route other than these
+three takes one entry in `ENDPOINTS` at the top of `bench.py`, and any pair of them can be measured
+against each other:
 
 ```python
 "example": {"base_url": "https://api.example.com/v1", "model": "vendor/model-id",
-            "key_env": "EXAMPLE_API_KEY", "session_header": False},
+            "key_env": "EXAMPLE_API_KEY", "key_env_alt": ["EXAMPLE_KEY"], "session_header": False},
 ```
 
 ## How to run it
 
 ```bash
+python bench.py list                                        # the routes and their keys
 python bench.py ab --a commandcode --b opencode-go --n 4     # the A/B test, all four phases
+python bench.py ab --a deepseek-official --b commandcode
+python bench.py run --endpoint deepseek-official             # one route on its own
 python bench.py report results/2026-09-23T210256Z            # one file, or every file of a directory
 python bench.py compare results/2026-09-23T210256Z           # the two sides of the last run in it
+python bench.py compare results/2026-09-29T064339Z/ab_commandcode_20260929T064339Z.json \
+                       results/2026-09-29T064339Z/ab_deepseek-official_20260929T064339Z.json
 ```
 
 `ab` alternates the two endpoints, so the load of the provider hits both sides in the same way, and
@@ -62,10 +95,15 @@ one; `--out-dir` puts the files of several commands in one directory of a round.
 ## How to read the numbers
 
 - `ttft_any_ms` is the delay before the first delta, reasoning or content; `ttft_content_ms` is the
-  delay before the first visible token. The difference is the slow start that a user sees.
+  delay before the first visible token. The difference is the slow start that a user sees, and it
+  moves with the reasoning that precedes the visible text, so read it next to `reasoning_tokens`.
 - `tok_per_s_total` divides the output tokens by the time from the first delta to the last one, and
   it includes the reasoning; `tok_per_s_visible` counts the visible content only. `models_reuse`
   gives the TTFB with a ready socket, which is the fixed cost of the gateway for each request.
+- A rate divides tokens by time, so two routes that write a different number of tokens for the same
+  prompt are not compared by it alone. `compare` says so under its table when the two sides differ
+  by more than a fifth; the row that survives that case is `tok_per_s_visible`, which divides the
+  same visible answer by the time on both sides.
 - `compare` prints the median of each metric of the two sides, the quotient, the number of samples
   of each side, and the faster endpoint. It names no winner for a count, for a difference below 10
   percent, or for a phase of fewer than 3 samples, and it hides a rate whose median answer is too
@@ -90,6 +128,16 @@ aggregations of the first session are the commands `report` and `compare`.
   and a rate computed from a non-streaming answer is not correct.
 - OpenCode (Go) requires the header `x-opencode-session`, else the answer is `400 MissingSessionID`,
   and it refuses `urllib` of Python with `403`: send a browser user agent, as `bench.py` does.
+- The tool speaks the OpenAI-compatible surface of a route, `POST /chat/completions`. The vendor
+  route also answers on `POST /anthropic/v1/messages`, which this tool does not measure and whose
+  numbers are therefore not rows of these tables.
+- A key that the user set for the whole account on Windows lives in the registry and not in the
+  environment of a process that a desktop app started: read it as `bench.py` does, or the tool
+  reports the route as `MISSING` while its key is present on the machine.
+- A route can authenticate and list its models while it refuses every completion: OpenCode (Go) did
+  that on 2026-09-29, `403 An active OpenCode Go subscription is required to use Go models`, with
+  `/models` answering `200` all the while. Such a request is an error in a result file, with its
+  status and a sample of the body beside it, and it stays out of every median.
 - Compare a rate in tokens, not in seconds, because two endpoints do not write the same number of
   tokens for the same prompt; and read a ratio against the other ratios of its own table, not
   against the absolute values of another run.

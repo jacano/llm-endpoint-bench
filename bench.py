@@ -17,6 +17,7 @@ Examples
 --------
     python bench.py list
     python bench.py ab --a commandcode --b opencode-go     # the whole A/B, both sides
+    python bench.py ab --a deepseek-official --b commandcode
     python bench.py run --endpoint commandcode --phases short,long
     python bench.py report results/2026-09-23T210256Z
     python bench.py compare results/2026-09-23T210256Z
@@ -27,9 +28,11 @@ the UTC time of the run, so a second run of the same day cannot mix with the fir
 --out-dir to put the files of several commands in one directory of a round. `report` and
 `compare` accept a directory as well as a file, and results/README.md states the layout.
 
-Keys are read from the environment, then from a `.env` file beside the tool, then from the
-profile of the Hermes Agent desktop app when the machine holds one (names only are ever
-printed). Nothing in this repo contains a credential.
+Keys are read from the environment of the process, then from the user environment of
+Windows (which a process that a desktop app started does not inherit), then from a `.env`
+file beside the tool, then from the profile of the Hermes Agent desktop app when the machine
+holds one. Names and places are printed; a value never is. Nothing in this repo contains a
+credential.
 """
 from __future__ import annotations
 
@@ -85,9 +88,14 @@ MIN_OUTPUT_TOKENS = 50
 #: The numerator of each rate: the field, the words for it, and the floor it needs.
 RATE_OF = {"tok_per_s_visible": ("content_tokens", "content tokens", MIN_CONTENT_TOKENS),
            "tok_per_s_total": ("out_tokens", "output tokens", MIN_OUTPUT_TOKENS)}
+#: The marker that curl appends after the body of a streaming request: its HTTP status.
+#: A stream that carries no delta is a failed request, and the status is what names it.
+HTTP_MARK = "BENCH_HTTP:"
 
-#: Known endpoints. `deepseek-v4.1-flash` is the same model on both routes;
-#: only the id spelling and the transport differ.
+#: Known endpoints. `deepseek-v4.1-flash` is the same model on the two routes
+#: commandcode and opencode-go; only the id spelling and the transport differ.
+#: `deepseek-official` is the route of the vendor itself, which the two gateways
+#: above resell: same model, no gateway in the path.
 ENDPOINTS = {
     "commandcode": {
         "base_url": "https://api.commandcode.ai/provider/v1",
@@ -99,7 +107,14 @@ ENDPOINTS = {
         "base_url": "https://opencode.ai/zen/go/v1",
         "model": "deepseek-v4.1-flash",
         "key_env": "OPENCODE_GO_API_KEY",
+        "key_env_alt": ["OPENCODE_API_KEY"],  # the name the desktop agent of that route uses
         "session_header": True,  # 400 MissingSessionID without it
+    },
+    "deepseek-official": {
+        "base_url": "https://api.deepseek.com/v1",
+        "model": "deepseek-flash",
+        "key_env": "DEEPSEEK_API_KEY",
+        "session_header": False,
     },
 }
 
@@ -121,8 +136,46 @@ def load_env_file(path: str | None = None) -> dict:
     return out
 
 
+def windows_user_env() -> dict:
+    """The user environment of Windows: the one place a key can live unseen.
+
+    A key that the user sets for the whole account reaches every shell that the user
+    opens and never reaches the process tree of an app that was started before it, so
+    a tool that reads `os.environ` alone calls that key missing and asks for a copy of
+    it. Read the registry value here instead, so that one place holds the key.
+    """
+    if os.name != "nt":
+        return {}
+    try:
+        import winreg
+    except ImportError:  # a build of Python without the module
+        return {}
+    out = {}
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            for i in range(winreg.QueryInfoKey(key)[1]):
+                name, value, _ = winreg.EnumValue(key, i)
+                out[name] = value
+    except OSError:
+        return {}
+    return out
+
+
+def key_from(name: str) -> tuple[str | None, str | None]:
+    """The value of a key and where it came from. The value is never printed anywhere."""
+    if os.environ.get(name):
+        return os.environ[name], "the environment"
+    env = windows_user_env()
+    if env.get(name):
+        return env[name], "the user environment of Windows"
+    found = load_env_file().get(name)
+    if found:
+        return found, "a .env file"
+    return None, None
+
+
 def api_key(name: str) -> str | None:
-    return os.environ.get(name) or load_env_file().get(name)
+    return key_from(name)[0]
 
 
 def endpoint(name: str) -> dict:
@@ -130,8 +183,18 @@ def endpoint(name: str) -> dict:
         sys.exit("unknown endpoint %r (known: %s)" % (name, ", ".join(ENDPOINTS)))
     ep = dict(ENDPOINTS[name])
     ep["name"] = name
-    ep["key"] = api_key(ep["key_env"])
+    # One key may carry a second variable name on a machine where another program set
+    # it (`OPENCODE_API_KEY` for the route that this tool calls `opencode-go`). The
+    # first name that resolves wins, and that name is the one printed.
+    ep["key_names"] = [ep["key_env"]] + list(ep.get("key_env_alt") or [])
+    ep["key"], ep["key_var"], ep["key_from"] = None, ep["key_env"], None
+    for var in ep["key_names"]:
+        value, where = key_from(var)
+        if value:
+            ep["key"], ep["key_var"], ep["key_from"] = value, var, where
+            break
     return ep
+
 
 
 # ---------------------------------------------------------------------- transport
@@ -208,25 +271,38 @@ def ms(seconds: str) -> float:
 # ----------------------------------------------------------------------- streaming
 
 def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
-    """Streaming request; TTFT split + exact token counts from the trailing usage block."""
+    """Streaming request; TTFT split + exact token counts from the trailing usage block.
+
+    A stream that carries no delta is a failed request and not a fast one: a gateway that
+    answers `403` with a JSON error object sends no `data:` line at all, and a record of
+    nulls beside the clean ones is worse than no record. The HTTP status and a sample of
+    the body or of the error of curl travel with the record for that reason.
+    """
     body = {"model": ep["model"], "messages": [{"role": "user", "content": prompt}],
             "max_tokens": max_tokens, "stream": True,
             "stream_options": {"include_usage": True}}
     payload = json.dumps(body)
     args = ["curl", "-sS", "-N", "-X", "POST", ep["base_url"] + "/chat/completions"] + \
-        headers(ep) + ["--data-binary", "@-"]
+        headers(ep) + ["--data-binary", "@-", "-w", "\n" + HTTP_MARK + "%{http_code}"]
     t0 = time.perf_counter()
     proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, text=True, bufsize=1)
+                            stderr=subprocess.PIPE, text=True, bufsize=1)
     proc.stdin.write(payload)
     proc.stdin.close()
     first_any = first_reason = first_content = last = None
     n_unparseable = 0
-    usage, errsample = {}, None
+    usage, errsample, http_code, plain = {}, None, None, []
     for raw in proc.stdout:
         now = time.perf_counter() - t0
         raw = raw.strip()
+        if not raw:
+            continue
+        if HTTP_MARK in raw:
+            http_code = raw.split(HTTP_MARK, 1)[1].strip()
+            continue
         if not raw.startswith("data:"):
+            if len(plain) < 5:  # a body that is not the stream: an error object, a page of a proxy
+                plain.append(raw[:200])
             continue
         body_line = raw[5:].strip()
         if body_line == "[DONE]":
@@ -250,8 +326,16 @@ def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
             first_content = now if first_content is None else first_content
             last = now
     proc.wait()
+    err_text = (proc.stderr.read() or "").strip() if proc.stderr else ""
     if n_unparseable and errsample is None:
         errsample = "%d lines of the stream did not parse as JSON" % n_unparseable
+    if errsample is None and plain:
+        errsample = " ".join(plain)[:200]
+    if errsample is None and err_text:
+        errsample = err_text[:200]
+    if errsample is None and first_any is None:
+        errsample = ("the stream carried no delta (http %s)" % (http_code or "?")
+                     if http_code else "the stream carried no delta")
     end = time.perf_counter() - t0
     out_tok = usage.get("completion_tokens")
     reason_tok = (usage.get("completion_tokens_details") or {}).get("reasoning_tokens")
@@ -270,6 +354,7 @@ def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
         "content_tokens": content_tok,
         "tok_per_s_total": round(out_tok / gen, 1) if (out_tok and gen) else None,
         "tok_per_s_visible": round(content_tok / vis, 1) if (content_tok and vis) else None,
+        "http_code": http_code,
         "error": errsample,
     }
 
@@ -307,6 +392,19 @@ PHASES = {"transport": phase_transport, "short": phase_short, "long": phase_long
           "concurrent": phase_concurrent}
 
 
+def phases_of(text: str) -> list[str]:
+    """The phases that a `--phases` string names, checked against the closed set.
+
+    A name that the tool does not hold used to reach the runner as a `KeyError`; the
+    message now names the set, as the message of an unknown endpoint does.
+    """
+    phases = [p.strip() for p in text.split(",") if p.strip()]
+    unknown = [p for p in phases if p not in PHASES]
+    if unknown:
+        sys.exit("unknown phase %s (known: %s)" % (", ".join(unknown), ", ".join(PHASES)))
+    return phases or list(PHASES)
+
+
 # ------------------------------------------------------------------------- running
 
 def run_phases(ep: dict, phases: list[str]) -> list[dict]:
@@ -322,7 +420,8 @@ def run_phases(ep: dict, phases: list[str]) -> list[dict]:
 
 def summarize(r: dict) -> str:
     if r.get("error"):
-        return "ERROR " + str(r["error"])[:120]
+        return "ERROR%s %s" % (" http=%s" % r["http_code"] if r.get("http_code") else "",
+                               str(r["error"])[:120])
     if r["kind"] in ("models", "models_reuse"):
         return "code=%s tls=%s ttfb=%s" % (r.get("code", "-"), r.get("tls_ms", "-"), r.get("ttfb_ms", "-"))
     if r["kind"] == "models_body":
@@ -597,8 +696,8 @@ def cmd_ab(args) -> None:
     a, b = endpoint(args.a), endpoint(args.b)
     for ep in (a, b):
         if not ep["key"]:
-            sys.exit("no key for %s (env %s)" % (ep["name"], ep["key_env"]))
-    phases = args.phases.split(",")
+            sys.exit("no key for %s (%s)" % (ep["name"], " or ".join(ep["key_names"])))
+    phases = phases_of(args.phases)
     out = {a["name"]: [], b["name"]: []}
     for phase in phases:
         n = args.n if phase in ("short", "long") else 1
@@ -618,9 +717,10 @@ def cmd_ab(args) -> None:
 def cmd_run(args) -> None:
     ep = endpoint(args.endpoint)
     if not ep["key"]:
-        sys.exit("no API key for %s: set %s in the environment, or in a .env file beside the "
-                 "tool" % (ep["name"], ep["key_env"]))
-    phases = args.phases.split(",")
+        sys.exit("no API key for %s: set %s in the environment, in the user environment of "
+                 "Windows, or in a .env file beside the tool"
+                 % (ep["name"], " or ".join(ep["key_names"])))
+    phases = phases_of(args.phases)
     print("endpoint=%s model=%s phases=%s" % (ep["name"], ep["model"], phases))
     recs = run_phases(ep, phases)
     path = write_results(recs, ep, phases, args.out_dir or default_out_dir())
@@ -681,9 +781,11 @@ def main() -> None:
     args = ap.parse_args()
     if args.cmd == "list":
         for name, cfg in ENDPOINTS.items():
-            print("%-14s %-45s model=%s key=%s %s%s" % (
-                name, cfg["base_url"], cfg["model"], cfg["key_env"],
-                "found" if api_key(cfg["key_env"]) else "MISSING",
+            ep = endpoint(name)
+            state = ("found (%s, from %s)" % (ep["key_var"], ep["key_from"])) if ep["key"] \
+                else "MISSING"
+            print("%-18s %-45s model=%-28s key=%s %s%s" % (
+                name, cfg["base_url"], cfg["model"], ep["key_var"], state,
                 "  (+ x-opencode-session)" if cfg["session_header"] else ""))
         return
     args.func(args)

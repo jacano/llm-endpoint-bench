@@ -17,11 +17,27 @@ the field `meta.started_utc`, and the header that the commands `report` and `com
 | `2026-09-23T204204Z/` | Windows 11 | 96 | The same conclusion in a second round of the same host, four hours later |
 | `2026-09-23T210256Z/` | Windows 11 | 96 | The same conclusion in a third round of that host, twenty minutes later |
 | `2026-09-23T212350Z/` | Windows 11 | 96 | The same conclusion in a fourth round of that host, twenty-one minutes later |
+| `2026-09-29T062827Z/` | Windows 11 | 21 | One route only, CommandCode: the gateway holds, the decode of the model is about half the rate of 09-23 |
+| `2026-09-29T062914Z/` | Windows 11 | 21 | The same command 47 seconds later: the rates repeat within 2 percent, the delay to the first visible token does not |
+| `2026-09-29T063619Z/` | Windows 11 | 21 | One route only, the API of the vendor itself: the model answers a short prompt in half the time of the resold route, and the edge of that route charges as much for a request as the OpenCode gateway |
+| `2026-09-29T064339Z/` | Windows 11 | 96 | The vendor route against CommandCode, interleaved: CommandCode wins every row of the transport, 14.09 times on a ready socket, and the vendor route wins every row of the model, 2.04 to 2.63 times on the delays |
 
-The four rounds measured the same model, `deepseek-v4.1-flash`, on the two routes CommandCode
-and OpenCode (Go), on one host. Read the `summary.md` of a directory for the tables, the findings
-and the limits of that round. The comparison of the rounds with one another, and the limits that
-all of them share, are in `../ANALYSIS.md`.
+Eight rounds measured one model, `deepseek-v4.1-flash`, on one host, over the three routes of
+`bench.py`: the four rounds of 09-23 put CommandCode against OpenCode (Go), and the four of 09-29
+measured what six days did to them and what the API of the vendor of the model costs and gives.
+Read the `summary.md` of a directory for the tables, the findings and the limits of that round. The
+comparison of the rounds with one another, and the limits that all of them share, are in
+`../ANALYSIS.md`.
+
+Three rounds of 09-29 measure one route each, because the second side of a pair was either not in
+play or not measurable: `bench.py run --endpoint commandcode` at 06:28Z and 06:29Z, and
+`bench.py run --endpoint deepseek-official` at 06:36Z, which is the API of the vendor of the model
+(`https://api.deepseek.com/v1`) that the two resold routes carry under the ids
+`deepseek/deepseek-v4.1-flash` and `deepseek-v4.1-flash`. The fourth round of that morning is the
+A/B of the vendor route against CommandCode. A fifth command of that morning, the A/B of CommandCode
+against OpenCode (Go), wrote no file: the subscription of OpenCode (Go) refused every completion of
+that day with `403` while its transport went on answering, and a round that holds one side of a
+model is not a comparison. `../ANALYSIS.md` states that in its limits.
 
 A session before these wrote records with an older version of the tool: a phase vocabulary
 of its own, no `meta` block in three of its four files, and a row of its table whose other side
@@ -73,6 +89,51 @@ The fourth round, twenty-one minutes after the third one. Both files come from t
 | `summary.md` | - | The tables, the findings and the limits of this round. |
 | `ab_commandcode_20260923T212350Z.json` | 2026-09-23T21:23:50Z | The A/B test, CommandCode side, with 48 records and the phases transport, short, long and concurrent. |
 | `ab_opencode-go_20260923T212350Z.json` | 2026-09-23T21:23:50Z | The A/B test, OpenCode (Go) side, with 48 records and the same phases. |
+
+## 2026-09-29T062827Z
+
+The fifth round of this host, six days after the fourth one, and the first to measure one route
+alone. The command was `bench.py run --endpoint commandcode`, so the directory holds one file and
+no second side: OpenCode (Go) is not in play here.
+
+| File | Generated (UTC) | Content |
+|---|---|---|
+| `summary.md` | - | The tables, the findings and the limits of this round. |
+| `commandcode_20260929T062827Z.json` | 2026-09-29T06:28:27Z | One route, CommandCode, with 21 records and the phases transport, short, long and concurrent. |
+
+## 2026-09-29T062914Z
+
+The sixth round of this host, 47 seconds after the fifth one: the same command on the same route,
+to separate the state of the route from the noise of one round.
+
+| File | Generated (UTC) | Content |
+|---|---|---|
+| `summary.md` | - | The tables, the findings and the limits of this round. |
+| `commandcode_20260929T062914Z.json` | 2026-09-29T06:29:14Z | One route, CommandCode, with 21 records and the same phases. |
+
+## 2026-09-29T063619Z
+
+The seventh round of this host, 7 minutes 5 seconds after the sixth one, and the first to measure
+the API of the vendor of the model itself rather than a gateway that resells it. The command was
+`bench.py run --endpoint deepseek-official`, a third entry of `ENDPOINTS` in `bench.py`.
+
+| File | Generated (UTC) | Content |
+|---|---|---|
+| `summary.md` | - | The tables, the findings and the limits of this round. |
+| `deepseek-official_20260929T063619Z.json` | 2026-09-29T06:36:19Z | One route, the vendor's own, with 21 records and the phases transport, short, long and concurrent. |
+
+## 2026-09-29T064339Z
+
+The eighth round of this host, 7 minutes 20 seconds after the seventh one, and the first A/B test of
+the vendor route against a route that resells the same model. Both files come from the same command,
+`bench.py ab --a deepseek-official --b commandcode --n 4`, and they carry the same time: the two
+sides of one A/B test are written together.
+
+| File | Generated (UTC) | Content |
+|---|---|---|
+| `summary.md` | - | The tables, the findings and the limits of this round. |
+| `ab_commandcode_20260929T064339Z.json` | 2026-09-29T06:43:39Z | The A/B test, CommandCode side, with 48 records and the phases transport, short, long and concurrent. |
+| `ab_deepseek-official_20260929T064339Z.json` | 2026-09-29T06:43:39Z | The A/B test, vendor route side, with 48 records and the same phases. |
 
 ## The format of a file
 
