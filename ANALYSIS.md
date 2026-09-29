@@ -1,13 +1,14 @@
 # The analysis of the results
 
-Nine rounds measured one model, `deepseek-v4.1-flash`, on one Windows 11 host, over three routes
-and the four endpoints of `bench.py`: the API of the vendor of the model on each of its two
-surfaces, and two gateways that resell it, CommandCode and OpenCode (Go). Four rounds on 2026-09-23
-measured the two resold routes against each other, between 15:34Z and 21:23Z. Five rounds on
-2026-09-29 measured one or two of the endpoints each, between 06:28Z and 07:56Z: the two resold
+Ten rounds measured one model, `deepseek-v4.1-flash`, on one Windows 11 host, over three routes and
+the five endpoints of `bench.py`: the API of the vendor of the model on each of its two surfaces,
+and two gateways that resell it, CommandCode under two model ids and OpenCode (Go). Four rounds on
+2026-09-23 measured the two resold routes against each other, between 15:34Z and 21:23Z. Six rounds
+on 2026-09-29 measured one to three of the endpoints each, between 06:28Z and 11:58Z: the two resold
 routes fell to about half their rate of six days before on the CommandCode side, the vendor route
-was measured for the first time, it went against CommandCode, and the two surfaces of it went
-against each other.
+was measured for the first time, it went against CommandCode, the two surfaces of it went against
+each other, and the last round put the normal tier of CommandCode, its fast tier and the vendor in
+one session.
 This file holds their tables, what the differences come from, what holds between the rounds, and
 the limits of the measurements.
 
@@ -16,6 +17,7 @@ the limits of the measurements.
 | The vendor of the model | `deepseek-official` | `openai-completions` | `https://api.deepseek.com/v1` | `deepseek-flash` |
 | The vendor of the model | `deepseek-official-messages` | `anthropic-messages` | `https://api.deepseek.com/anthropic` | `deepseek-flash` |
 | A reseller, CommandCode | `commandcode` | `openai-completions` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4.1-flash` |
+| A reseller, CommandCode, the fast tier of the same service | `commandcode-fast` | `openai-completions` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4.1-flash-fast` |
 | A reseller, OpenCode (Go) | `opencode-go` | `openai-completions` | `https://opencode.ai/zen/go/v1` | `deepseek-v4.1-flash` |
 
 An endpoint of this tool is one surface of one service. The vendor of the model answers on both of
@@ -37,6 +39,8 @@ indexes:
   interleaved A/B.
 - `results/2026-09-29T074529Z/` — the ninth round, the two surfaces of the vendor route against each
   other, in an interleaved A/B.
+- `results/2026-09-29T115801Z/` — the tenth round, the normal tier of CommandCode, its fast tier and
+  the vendor, in one interleaved session of three endpoints.
 
 The tool that produced them is `bench.py`; the README states it.
 
@@ -325,6 +329,46 @@ service and nothing else. Its tables are in `results/2026-09-29T074529Z/summary.
   before it warns, so a rate of that phase is a rate of the path and not of a longer answer.
 
 
+### The fast tier of the reseller, and the three of them in one session
+
+The tenth round put three endpoints in one interleaved session:
+`python bench.py ab --a commandcode --b deepseek-official --c commandcode-fast --n 4`. The two
+CommandCode sides are two model ids of one service on one base URL, `deepseek/deepseek-v4.1-flash`
+and `deepseek/deepseek-v4.1-flash-fast`; the third side is the API of the vendor of the model. Each
+cell below is the second endpoint of the pair divided by the first, as `compare` prints it: on a
+delay, below 1 means that the second is the faster one, and on a rate it means that the first is.
+The full tables are in `results/2026-09-29T115801Z/summary.md`.
+
+| Measurement | fast ÷ `commandcode` | vendor ÷ fast | vendor ÷ `commandcode` |
+|---|---|---|---|
+| TTFB of `/models`, reused connection | 0.97 (same) | 15.93 | 15.45 |
+| Short answer: TTFT of the first token | 0.53 | 0.76 | 0.40 |
+| Long answer: TTFT of the visible token | 0.36 | 1.18 | 0.43 |
+| Long answer: total time | 0.44 | 1.06 (same) | 0.47 |
+| Long answer: TPS of the visible content | 1.80 | 0.99 (same) | 1.79 |
+| 4 parallel requests: rate of one request | 1.75 | 1.02 (same) | 1.79 |
+| 4 parallel requests: total rate | 1.81 | 1.15 | 2.08 |
+
+- The fast tier of the reseller is faster than its normal tier by 1.70 to 1.81 times on the rates and
+  by 1.67 to 2.78 times on the delays of the model, on one base URL, one key and one edge: 939.4 ms
+  of short answer against 1777.3, 1343.7 ms to the first visible token of a long answer against
+  3718.2, and 370.1 tokens/s of sustained decoding against 217.8. A model id on a reseller is not a
+  model any more than a route is: the two ids of this one are two different services to a user of it.
+- The fast tier and the vendor of the model are one measurement apart on every rate — 370.1 against
+  367.6 tokens/s sustained, 446.6 against 442.7 on the visible content, 361.4 against 368.2 for one
+  request under load, all `same` — and on the total time of a long answer, 2500.4 against 2648.4 ms.
+  The vendor keeps the short answer, 715.0 against 939.4 ms, and the fast tier keeps the start of a
+  long answer, 1343.7 against 1581.3 ms.
+- The split of the two halves of a route is in the same table, and the fast tier is the endpoint that
+  holds both: the edge of the reseller, 15.9 and 16.4 ms on a ready socket against the 253.3 of the
+  vendor, and a decode at the rate of the vendor, 370.1 against 367.6 tokens/s.
+- The normal tier of the reseller is the slow side of this round on every row of the model, and its
+  work is the cause of the rate rows. Its `long` answers wrote 896 output tokens of which 397 were
+  reasoning, against 590 and 90 for the fast tier and 635 and 135 for the vendor, and several of them
+  stopped at the 1200-token cap of that phase. Its visible content is the same 499 and 500 tokens as
+  the other two, and the rate of that content, 247.9 against 446.6 and 442.7 tokens/s, is the row
+  that compares the three without that caveat.
+
 ### OpenCode (Go) could not be measured on 2026-09-29
 
 A third A/B of that morning, `python bench.py ab --a commandcode --b opencode-go --n 4`, was started
@@ -401,9 +445,9 @@ changes between rounds: the TTFT of one endpoint went from 620 ms to 2660 ms for
 The absolute values of two rounds are not comparable, because the host, the network path and the hour differ; compare the ratios only. The round did not test retries, tool calls, or streaming
 with tools. A measurement becomes stale, so measure again before you change a route or a budget.
 
-- The five rounds of 2026-09-29 measure the four endpoints inside an hour and a half of one morning,
-  so a ratio of one of them holds two routes or two surfaces at one moment, not a property of
-  either.
+- The six rounds of 2026-09-29 measure the five endpoints inside five and a half hours of one day, so
+  a ratio of one of them holds two routes, two model ids or two surfaces at one moment, not a
+  property of either.
 - The rounds of that morning compare routes that do not write the same number of output tokens for
   the same prompt. In the A/B of 06:43Z the `long` phase differs by 8 percent (698 against 646.5
   output tokens) and the `concurrent_4` phase by 77 percent (635.5 against 1122, of which 136.5

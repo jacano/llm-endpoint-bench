@@ -22,12 +22,14 @@ the field `meta.started_utc`, and the header that the commands `report` and `com
 | `2026-09-29T063619Z/` | Windows 11 | 21 | One route only, the API of the vendor itself: the model answers a short prompt in half the time of the resold route, and the edge of that route charges as much for a request as the OpenCode gateway |
 | `2026-09-29T064339Z/` | Windows 11 | 96 | The vendor route against CommandCode, interleaved: CommandCode wins every row of the transport, 14.09 times on a ready socket, and the vendor route wins every row of the model, 2.04 to 2.63 times on the delays |
 | `2026-09-29T074529Z/` | Windows 11 | 96 | The two surfaces of the vendor service, interleaved: every row of the model comes out `same` within 10 percent, and the surfaces differ in what they report, not in what they cost |
+| `2026-09-29T115801Z/` | Windows 11 | 144 | Three endpoints of one session: the fast tier of CommandCode beats its normal tier by 1.7 to 1.8 times and lands on the vendor of the model, which keeps its short answer |
 
-Nine rounds measured one model, `deepseek-v4.1-flash`, on one host, over the three routes and the
-four endpoints of `bench.py`: the four rounds of 09-23 put CommandCode against OpenCode (Go), the
-four of 09-29 that follow measured what six days did to them and what the API of the vendor of the
-model costs and gives, and the last one measures the two surfaces of that API against each other.
-Read the `summary.md` of a directory for the tables, the findings and the limits of that round. The
+Ten rounds measured one model, `deepseek-v4.1-flash`, on one host, over the three routes and the
+five endpoints of `bench.py`: the four rounds of 09-23 put CommandCode against OpenCode (Go), the
+five of 09-29 that follow measured what six days did to them, what the API of the vendor of the
+model costs and gives, and how its two surfaces compare, and the last one of that day puts the
+normal tier of CommandCode, its fast tier and the vendor in one interleaved round. Read the
+`summary.md` of a directory for the tables, the findings and the limits of that round. The
 comparison of the rounds with one another, and the limits that all of them share, are in
 `../ANALYSIS.md`.
 
@@ -156,6 +158,21 @@ the same time because they are the two sides of one A/B test.
 | `ab_deepseek-official_20260929T074529Z.json` | 2026-09-29T07:45:29Z | The OpenAI-compatible surface of the vendor service, 48 records, `api` = `openai-completions`. |
 | `ab_deepseek-official-messages_20260929T074529Z.json` | 2026-09-29T07:45:29Z | The Messages surface of the same service, 48 records, `api` = `anthropic-messages`. |
 
+## 2026-09-29T115801Z
+
+The tenth round of this host, four hours after the ninth one, and the first with three endpoints in
+one session: the normal tier of CommandCode, its fast tier and the API of the vendor of the model.
+The command was `bench.py ab --a commandcode --b deepseek-official --c commandcode-fast --n 4`, so
+the directory holds one file for each endpoint and no pair: `compare` takes any two of the three by
+name.
+
+| File | Generated (UTC) | Content |
+|---|---|---|
+| `summary.md` | - | The tables, the findings and the limits of this round. |
+| `ab_commandcode_20260929T115801Z.json` | 2026-09-29T11:58:01Z | The normal tier, 48 records, phases transport, short, long and concurrent. |
+| `ab_commandcode-fast_20260929T115801Z.json` | 2026-09-29T11:58:01Z | The fast tier, 48 records and the same phases. |
+| `ab_deepseek-official_20260929T115801Z.json` | 2026-09-29T11:58:01Z | The vendor of the model, 48 records and the same phases. |
+
 ## The format of a file
 
 A file that `bench.py` writes holds two blocks:
@@ -208,10 +225,17 @@ A run makes its own directory, and the name of that directory carries the time o
 python bench.py ab --a commandcode --b opencode-go --n 4
 # -> results/2026-09-24T091533Z/ab_commandcode_20260924T091533Z.json
 #    results/2026-09-24T091533Z/ab_opencode-go_20260924T091533Z.json
+
+python bench.py ab --a commandcode --b deepseek-official --c commandcode-fast --n 4
+# -> results/2026-09-29T115416Z/ab_commandcode_20260929T115416Z.json
+#    results/2026-09-29T115416Z/ab_deepseek-official_20260929T115416Z.json
+#    results/2026-09-29T115416Z/ab_commandcode-fast_20260929T115416Z.json
 ```
 
-The command with no `--phases` runs all four phases. A round of more than one command takes one
-directory: give the same `--out-dir` to every command of it, as in
+A round of three writes three files, and `compare` then takes any two of them by name: with three
+tags in one directory the command stops and names them, because the pair is your choice and not a
+guess of the tool. The command with no `--phases` runs all four phases. A round of more than one
+command takes one directory: give the same `--out-dir` to every command of it, as in
 `--out-dir results/2026-09-24T091533Z`. The name of that directory then holds the time of the first
 command of the round.
 

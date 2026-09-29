@@ -30,7 +30,7 @@ Examples
 --------
     python bench.py list
     python bench.py ab --a commandcode --b opencode-go     # the whole A/B, both sides
-    python bench.py ab --a deepseek-official --b commandcode
+    python bench.py ab --a commandcode --b deepseek-official --c commandcode-fast
     python bench.py ab --a deepseek-official --b deepseek-official-messages
     python bench.py run --endpoint commandcode --phases short,long
     python bench.py report results/2026-09-23T210256Z
@@ -124,6 +124,13 @@ ENDPOINTS = {
     "commandcode": {
         "base_url": "https://api.commandcode.ai/provider/v1",
         "model": "deepseek/deepseek-v4.1-flash",
+        "key_env": "COMMANDCODE_API_KEY",
+        "api": OPENAI,
+        "session_header": False,
+    },
+    "commandcode-fast": {
+        "base_url": "https://api.commandcode.ai/provider/v1",
+        "model": "deepseek/deepseek-v4.1-flash-fast",
         "key_env": "COMMANDCODE_API_KEY",
         "api": OPENAI,
         "session_header": False,
@@ -677,7 +684,8 @@ def dir_pair(directory: str) -> tuple[str, str]:
         if tag:
             tags.setdefault(tag, []).append((stamp, os.path.join(directory, name)))
     if len(tags) != 2:
-        sys.exit("compare: %s holds %d tag(s) (%s). Name the two files of the pair."
+        sys.exit("compare: %s holds %d tag(s) (%s). Name the two files of the pair: a round of "
+                 "three holds three pairs, and each of them is one command."
                  % (directory, len(tags), ", ".join(sorted(tags)) or "none"))
     pair = [max(rows)[1] for _, rows in sorted(tags.items())]
     return pair[0], pair[1]
@@ -896,22 +904,32 @@ def fmt(v) -> str:
 # ---------------------------------------------------------------------------- ab
 
 def cmd_ab(args) -> None:
-    a, b = endpoint(args.a), endpoint(args.b)
-    for ep in (a, b):
+    """Run an interleaved round of two endpoints, or of three when --c names one.
+
+    A round of three is the way to compare a pair of routes against one anchor without an indirect
+    quotient: every round of the `short` and `long` phases touches all three in turn, so the load
+    of the provider hits them the same way. `compare` takes any two of the files that the command
+    writes.
+    """
+    eps = [endpoint(args.a), endpoint(args.b)] + ([endpoint(args.c)] if args.c else [])
+    if len({ep["name"] for ep in eps}) != len(eps):
+        sys.exit("ab: name each endpoint once (%s)" % ", ".join(ep["name"] for ep in eps))
+    for ep in eps:
         if not ep["key"]:
             sys.exit("no key for %s (%s)" % (ep["name"], " or ".join(ep["key_names"])))
     phases = phases_of(args.phases)
-    out = {a["name"]: [], b["name"]: []}
+    out = {ep["name"]: [] for ep in eps}
     for phase in phases:
         n = args.n if phase in ("short", "long") else 1
         for i in range(n):
-            for ep in (a, b):  # interleaved: provider load hits both sides equally
+            for ep in eps:  # interleaved: the load of the provider hits every side equally
                 rows = PHASES[phase](ep)
                 for r in rows:
                     r.update({"endpoint": ep["name"], "model": ep["model"]})
-                    print("  %-14s %-10s [%d] %s" % (ep["name"], phase, i + 1, summarize(r)), flush=True)
+                    print("  %-22s %-10s [%d] %s" % (ep["name"], phase, i + 1, summarize(r)),
+                          flush=True)
                 out[ep["name"]] += rows
-    for ep in (a, b):
+    for ep in eps:
         path = write_results(out[ep["name"]], ep, phases, args.out_dir or default_out_dir(),
                              prefix="ab_")
         print("wrote", path)
@@ -961,9 +979,12 @@ def main() -> None:
                                      "for each run, results/<date>T<time>Z/)")
     r.set_defaults(func=cmd_run)
 
-    a = sub.add_parser("ab", help="interleaved A/B between two endpoints")
+    a = sub.add_parser("ab", help="interleaved A/B between two endpoints, or three with --c")
     a.add_argument("--a", required=True, choices=sorted(ENDPOINTS))
     a.add_argument("--b", required=True, choices=sorted(ENDPOINTS))
+    a.add_argument("--c", choices=sorted(ENDPOINTS),
+                   help="a third endpoint, for a round of three; the three are interleaved, and "
+                        "a comparison of any two of them is a comparison of two sides of one round")
     a.add_argument("--phases", default=",".join(PHASES), help="csv of: %s" % ",".join(PHASES))
     a.add_argument("--n", type=int, default=4, help="rounds for short/long")
     a.add_argument("--out-dir", help="directory of the result files (default: one directory "

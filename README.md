@@ -17,25 +17,31 @@ only.
 ## Results
 
 Three routes serve one model, `deepseek-v4.1-flash`: the API of the vendor of that model, on two
-surfaces, and two gateways that resell it, CommandCode and OpenCode (Go). Nine rounds measured them
-on one Windows 11 host, and the tool makes three comparisons of them:
+surfaces, and two gateways that resell it, CommandCode under two model ids and OpenCode (Go). Ten
+rounds measured them on one Windows 11 host, and the tool makes four comparisons of them:
 
 - **CommandCode against OpenCode (Go)**, four rounds on 2026-09-23, twenty minutes to four hours
   apart. CommandCode is faster on every measurement of every round: the gateway of OpenCode adds 250
   to 325 ms to each request with a ready socket, nine to twenty times the cost of CommandCode, and
   OpenCode decodes about 1.6 times slower in the steady state.
 - **The vendor route against CommandCode**, one interleaved round on 2026-09-29. CommandCode wins
-  every row of the transport, 18.5 ms against 260.7 ms for a request on a ready socket, and the
-  vendor route wins every row of the model: a short answer at 0.65 s of TTFT against 1.65 s, and a
-  sustained decode of 373.2 tokens/s against 201.0. The edge of the vendor route is expensive and
+  every row of the transport, 16.4 ms against 253.3 ms for a request on a ready socket, and the
+  vendor route wins every row of the model: a short answer at 0.72 s of TTFT against 1.78 s, and a
+  sustained decode of 367.6 tokens/s against 217.8. The edge of the vendor route is expensive and
   its model is fast; the gateway of CommandCode is the other way round, so a route is not faster
   than another without naming the half of it that you pay for.
 - **The two surfaces of the vendor service against each other**, one interleaved round on
-  2026-09-29, ten minutes after the one before it. Every row of a phase of the model comes out
-  `same` within 10 percent — a short answer at 673.6 against 695.4 ms and a sustained decode of
-  367.2 against 356.5 tokens/s — so the surface a client speaks does not change what the model
-  costs. What it changes is what a client can read: the Messages surface reports no reasoning split,
-  and three rows of its side of the table have no value at all.
+  2026-09-29. Every row of a phase of the model comes out `same` within 10 percent — a short answer
+  at 673.6 against 695.4 ms and a sustained decode of 367.2 against 356.5 tokens/s — so the surface a
+  client speaks does not change what the model costs. What it changes is what a client can read: the
+  Messages surface reports no reasoning split, and three rows of its side of the table have no value
+  at all.
+- **The two model ids of CommandCode and the vendor, in one session of three**, on 2026-09-29. The
+  fast tier of the reseller beats its normal tier by 1.70 to 1.81 times on the rates and 1.67 to 2.78
+  times on the delays — a short answer at 0.94 s against 1.78 s — and then lands on the vendor of the
+  model: every rate comes out `same`, 370.1 against 367.6 tokens/s sustained, and only the short
+  answer separates them, 939.4 against 715.0 ms. The fast tier is the one endpoint of this table that
+  holds both halves of a route, the cheap edge of the reseller and the decode of the vendor.
 
 The rounds of 2026-09-29 also measured the CommandCode route alone at 06:28Z and 06:29Z, six days
 after the four rounds before it: its transport held at the fast end of its range and the model side
@@ -70,18 +76,20 @@ from, never the value.
 | Endpoint | API | Base URL | Model | Key variable |
 |---|---|---|---|---|
 | `commandcode` | `openai-completions` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4.1-flash` | `COMMANDCODE_API_KEY` |
+| `commandcode-fast` | `openai-completions` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4.1-flash-fast` | `COMMANDCODE_API_KEY` |
 | `opencode-go` | `openai-completions` | `https://opencode.ai/zen/go/v1` | `deepseek-v4.1-flash` | `OPENCODE_GO_API_KEY`, or `OPENCODE_API_KEY` |
 | `deepseek-official` | `openai-completions` | `https://api.deepseek.com/v1` | `deepseek-flash` | `DEEPSEEK_API_KEY` |
 | `deepseek-official-messages` | `anthropic-messages` | `https://api.deepseek.com/anthropic` | `deepseek-flash` | `DEEPSEEK_API_KEY` |
 
-`opencode-go` also requires the header `x-opencode-session`. The last two rows are the two surfaces
-of one service, the API of the vendor of the model that the two gateways above resell: `/v1` is its
-OpenAI-compatible path and `/anthropic` its Messages path. An endpoint takes **one** surface, so a
-service of two takes two entries, and the tool can then put the surfaces of one service against each
-other as readily as two services.
+`opencode-go` also requires the header `x-opencode-session`. The first two rows are two tiers of one
+reseller on one base URL: the same service under two model ids, which the catalog prices
+differently. The last two rows are the two surfaces of one service, the API of the vendor of the
+model that the gateways resell: `/v1` is its OpenAI-compatible path and `/anthropic` its Messages
+path. An endpoint takes **one** surface and one model, so a service of two takes two entries, and
+the tool can then put the two of them against each other as readily as two providers.
 
 `python bench.py list` prints this table and says whether each key resolves and where it found it. A
-route other than these four takes one entry in `ENDPOINTS` at the top of `bench.py`:
+route other than these five takes one entry in `ENDPOINTS` at the top of `bench.py`:
 
 ```python
 "example": {"base_url": "https://api.example.com/v1", "model": "vendor/model-id",
@@ -92,9 +100,9 @@ route other than these four takes one entry in `ENDPOINTS` at the top of `bench.
 ## How to run it
 
 ```bash
-python bench.py list                                           # the routes, their surfaces and their keys
+python bench.py list                                           # the endpoints, their surfaces and their keys
 python bench.py ab --a commandcode --b opencode-go --n 4       # the A/B test, all four phases
-python bench.py ab --a deepseek-official --b commandcode
+python bench.py ab --a commandcode --b deepseek-official --c commandcode-fast   # a round of three
 python bench.py ab --a deepseek-official --b deepseek-official-messages   # the two surfaces of one service
 python bench.py run --endpoint deepseek-official-messages      # one surface on its own
 python bench.py report results/2026-09-23T210256Z              # one file, or every file of a directory
@@ -103,12 +111,15 @@ python bench.py compare results/2026-09-29T064339Z/ab_commandcode_20260929T06433
                        results/2026-09-29T064339Z/ab_deepseek-official_20260929T064339Z.json
 ```
 
-`ab` alternates the two endpoints, so the load of the provider hits both sides in the same way, and
-`--n` is the number of rounds of the `short` and `long` phases (5 and 4 requests each). It prints
-one line for each request as it arrives. Files land in a new directory named for the time of the
-run in UTC, `results/<date>T<time>Z/`, so a second run of the same day cannot mix with the first
-one; `--out-dir` puts the files of several commands in one directory of a round. `run
---endpoint NAME` measures one route on its own.
+`ab` alternates the endpoints, so the load of the provider hits every side in the same way, and `--n`
+is the number of rounds of the `short` and `long` phases (5 and 4 requests each). A third endpoint
+goes in `--c`, and the three are interleaved inside every round: `compare` then takes any two of the
+three files that the command writes, so one round of three holds three comparisons of a single
+session instead of a quotient read through a fourth route. It prints one line for each request as it
+arrives. Files land in a new directory named for the time of the run in UTC,
+`results/<date>T<time>Z/`, so a second run of the same day cannot mix with the first one;
+`--out-dir` puts the files of several commands in one directory of a round. `run --endpoint NAME`
+measures one route on its own.
 
 ## Phases
 
