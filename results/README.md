@@ -21,23 +21,31 @@ the field `meta.started_utc`, and the header that the commands `report` and `com
 | `2026-09-29T062914Z/` | Windows 11 | 21 | The same command 47 seconds later: the rates repeat within 2 percent, the delay to the first visible token does not |
 | `2026-09-29T063619Z/` | Windows 11 | 21 | One route only, the API of the vendor itself: the model answers a short prompt in half the time of the resold route, and the edge of that route charges as much for a request as the OpenCode gateway |
 | `2026-09-29T064339Z/` | Windows 11 | 96 | The vendor route against CommandCode, interleaved: CommandCode wins every row of the transport, 14.09 times on a ready socket, and the vendor route wins every row of the model, 2.04 to 2.63 times on the delays |
+| `2026-09-29T074529Z/` | Windows 11 | 96 | The two surfaces of the vendor service, interleaved: every row of the model comes out `same` within 10 percent, and the surfaces differ in what they report, not in what they cost |
 
-Eight rounds measured one model, `deepseek-v4.1-flash`, on one host, over the three routes of
-`bench.py`: the four rounds of 09-23 put CommandCode against OpenCode (Go), and the four of 09-29
-measured what six days did to them and what the API of the vendor of the model costs and gives.
+Nine rounds measured one model, `deepseek-v4.1-flash`, on one host, over the three routes and the
+four endpoints of `bench.py`: the four rounds of 09-23 put CommandCode against OpenCode (Go), the
+four of 09-29 that follow measured what six days did to them and what the API of the vendor of the
+model costs and gives, and the last one measures the two surfaces of that API against each other.
 Read the `summary.md` of a directory for the tables, the findings and the limits of that round. The
 comparison of the rounds with one another, and the limits that all of them share, are in
 `../ANALYSIS.md`.
+
+An endpoint of `bench.py` names one surface of one service: `openai-completions` for the shape of
+`POST /chat/completions`, `anthropic-messages` for the shape of `POST /v1/messages`. The `meta`
+block of a file names the surface of its round in the field `api`; a file written before the tool
+spoke two surfaces holds none, and every one of those measured the OpenAI-compatible surface.
 
 Three rounds of 09-29 measure one route each, because the second side of a pair was either not in
 play or not measurable: `bench.py run --endpoint commandcode` at 06:28Z and 06:29Z, and
 `bench.py run --endpoint deepseek-official` at 06:36Z, which is the API of the vendor of the model
 (`https://api.deepseek.com/v1`) that the two resold routes carry under the ids
 `deepseek/deepseek-v4.1-flash` and `deepseek-v4.1-flash`. The fourth round of that morning is the
-A/B of the vendor route against CommandCode. A fifth command of that morning, the A/B of CommandCode
-against OpenCode (Go), wrote no file: the subscription of OpenCode (Go) refused every completion of
-that day with `403` while its transport went on answering, and a round that holds one side of a
-model is not a comparison. `../ANALYSIS.md` states that in its limits.
+A/B of the vendor route against CommandCode, and the fifth the A/B of the two surfaces of the vendor
+service. A sixth command of that morning, the A/B of CommandCode against OpenCode (Go), wrote no
+file: the subscription of OpenCode (Go) refused every completion of that day with `403` while its
+transport went on answering, and a round that holds one side of a model is not a comparison.
+`../ANALYSIS.md` states that in its limits.
 
 A session before these wrote records with an older version of the tool: a phase vocabulary
 of its own, no `meta` block in three of its four files, and a row of its table whose other side
@@ -135,22 +143,39 @@ sides of one A/B test are written together.
 | `ab_commandcode_20260929T064339Z.json` | 2026-09-29T06:43:39Z | The A/B test, CommandCode side, with 48 records and the phases transport, short, long and concurrent. |
 | `ab_deepseek-official_20260929T064339Z.json` | 2026-09-29T06:43:39Z | The A/B test, vendor route side, with 48 records and the same phases. |
 
+## 2026-09-29T074529Z
+
+The ninth round of this host, 10 minutes after the eighth one, and the first round of the tool that
+measures the two surfaces of one service against each other. The command was
+`bench.py ab --a deepseek-official --b deepseek-official-messages --n 4`, and the two files carry
+the same time because they are the two sides of one A/B test.
+
+| File | Generated (UTC) | Content |
+|---|---|---|
+| `summary.md` | - | The tables, the findings and the limits of this round. |
+| `ab_deepseek-official_20260929T074529Z.json` | 2026-09-29T07:45:29Z | The OpenAI-compatible surface of the vendor service, 48 records, `api` = `openai-completions`. |
+| `ab_deepseek-official-messages_20260929T074529Z.json` | 2026-09-29T07:45:29Z | The Messages surface of the same service, 48 records, `api` = `anthropic-messages`. |
+
 ## The format of a file
 
 A file that `bench.py` writes holds two blocks:
 
 ```json
-{"meta": {"endpoint": "commandcode", "model": "deepseek/deepseek-v4.1-flash",
+{"meta": {"endpoint": "commandcode", "base_url": "https://api.commandcode.ai/provider/v1",
+          "model": "deepseek/deepseek-v4.1-flash", "api": "openai-completions",
           "phases": ["transport", "short", "long", "concurrent"],
           "started_utc": "20260923T210256Z", "host": "DESKTOP-08PBEHO", "runner": "bench.py"},
  "records": [{"kind": "short", "iter": 1, "ttft_any_ms": 826.3, "out_tokens": 17, "...": "..."}]}
 ```
 
-The `meta` block names the time in UTC, the host, the endpoint, the model and the phases. The
-`records` block holds one object for each request, and the field `kind` names the phase that
-made it. A record does not repeat the time, because every record of a file belongs to the one
-run that the `meta` block names. A file written by an earlier version of the tool may hold more
-fields.
+The `meta` block names the time in UTC, the host, the endpoint, the surface of that endpoint in the
+field `api` (`openai-completions` or `anthropic-messages`), the model and the phases. A file written
+before the tool spoke two surfaces holds no `api` field, and every one of those measured the
+OpenAI-compatible surface, which is what `report` and `compare` print for it. The `records` block
+holds one object for each request, and the field `kind` names the phase that made it. A record does
+not repeat the time, because every record of a file belongs to the one run that the `meta` block
+names. A file written by an earlier version of the tool may hold more fields, and a transport record
+of a round after 2026-09-29 names its probe in the field `probe`.
 
 ## How to read a directory
 

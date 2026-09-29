@@ -103,13 +103,9 @@ and at the transport of neither.
   a different load of the provider. Read a quotient of two rounds as the state of the route at two
   moments, not as a property of the route.
 - The round measures the OpenAI-compatible surface of the vendor route, `POST /v1/chat/completions`.
-  The desktop agent of this host uses the other surface of the same service, `POST
-  /anthropic/v1/messages`, which `bench.py` does not speak. That surface was read separately, with a
-  script of its own outside this repository (`probe_anthropic.py`, in the workspace of this host), at
-  06:39Z, 5 short and 4 long answers of the same two prompts: the
-  delay to the first token agrees with this round within 8 percent, 724.8 ms against 779.1 ms on the
-  short prompt, and the longer delay to the first visible token of that surface, 1693.7 ms, followed
-  a longer reasoning before it, 723.5 output tokens against 590.5 here.
+  The other surface of the same service, `POST /anthropic/v1/messages`, is measured by the round of
+  `../2026-09-29T074529Z/`, which the tool speaks as well now: `bench.py` takes the surface of an
+  endpoint in its `ENDPOINTS` entry, and a service of two surfaces takes two entries.
 - The round did not test retries, tool calls, or streaming with tools.
 - The key of the route lives in `.env` beside the tool, which is in `.gitignore`; no result file and
   no summary holds it.

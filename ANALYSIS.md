@@ -1,19 +1,26 @@
 # The analysis of the results
 
-Eight rounds measured one model, `deepseek-v4.1-flash`, on one Windows 11 host, over three routes:
-the API of the vendor of the model itself, and two gateways that resell it, CommandCode and
-OpenCode (Go). Four rounds on 2026-09-23 measured the two resold routes against each other, between
-15:34Z and 21:23Z. Four rounds on 2026-09-29 measured one or two of the three routes each, between
-06:28Z and 06:43Z: the two resold routes fell to about half their rate of six days before on the
-CommandCode side, and the vendor route was measured for the first time.
+Nine rounds measured one model, `deepseek-v4.1-flash`, on one Windows 11 host, over three routes
+and the four endpoints of `bench.py`: the API of the vendor of the model on each of its two
+surfaces, and two gateways that resell it, CommandCode and OpenCode (Go). Four rounds on 2026-09-23
+measured the two resold routes against each other, between 15:34Z and 21:23Z. Five rounds on
+2026-09-29 measured one or two of the endpoints each, between 06:28Z and 07:56Z: the two resold
+routes fell to about half their rate of six days before on the CommandCode side, the vendor route
+was measured for the first time, it went against CommandCode, and the two surfaces of it went
+against each other.
 This file holds their tables, what the differences come from, what holds between the rounds, and
 the limits of the measurements.
 
-| Route | Endpoint of `bench.py` | Base URL | Model id on the wire |
-|---|---|---|---|
-| The vendor of the model | `deepseek-official` | `https://api.deepseek.com/v1` | `deepseek-flash` |
-| A reseller, CommandCode | `commandcode` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4.1-flash` |
-| A reseller, OpenCode (Go) | `opencode-go` | `https://opencode.ai/zen/go/v1` | `deepseek-v4.1-flash` |
+| Route | Endpoint of `bench.py` | Surface | Base URL | Model id on the wire |
+|---|---|---|---|---|
+| The vendor of the model | `deepseek-official` | `openai-completions` | `https://api.deepseek.com/v1` | `deepseek-flash` |
+| The vendor of the model | `deepseek-official-messages` | `anthropic-messages` | `https://api.deepseek.com/anthropic` | `deepseek-flash` |
+| A reseller, CommandCode | `commandcode` | `openai-completions` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4.1-flash` |
+| A reseller, OpenCode (Go) | `opencode-go` | `openai-completions` | `https://opencode.ai/zen/go/v1` | `deepseek-v4.1-flash` |
+
+An endpoint of this tool is one surface of one service. The vendor of the model answers on both of
+the surfaces that the tool speaks, so it holds two entries, and a comparison of the two of them is a
+comparison of the paths of one service rather than of two providers.
 
 The raw records and the full tables of each round are in `results/`, which `results/README.md`
 indexes:
@@ -24,9 +31,12 @@ indexes:
 - `results/2026-09-23T212350Z/` — the fourth round, twenty-one minutes after the third one.
 - `results/2026-09-29T062827Z/` — the fifth round, six days later, one route only (CommandCode).
 - `results/2026-09-29T062914Z/` — the sixth round, 47 seconds after the fifth one, same route.
-- `results/2026-09-29T063619Z/` — the seventh round, the vendor route alone.
+- `results/2026-09-29T063619Z/` — the seventh round, the vendor route alone on its OpenAI-compatible
+  surface.
 - `results/2026-09-29T064339Z/` — the eighth round, the vendor route against CommandCode, in an
   interleaved A/B.
+- `results/2026-09-29T074529Z/` — the ninth round, the two surfaces of the vendor route against each
+  other, in an interleaved A/B.
 
 The tool that produced them is `bench.py`; the README states it.
 
@@ -272,6 +282,49 @@ the same way.
   in the records: it follows the reasoning that precedes the visible text, which ran from 36 to 722
   tokens across the answers of the A/B.
 
+### The two surfaces of the vendor route
+
+The ninth round put the two surfaces of one service against each other, interleaved, ten minutes
+after the eighth:
+`python bench.py ab --a deepseek-official --b deepseek-official-messages --n 4`. Both sides carry
+the same model id, `deepseek-flash`, and the same key, so the round measures two paths of one
+service and nothing else. Its tables are in `results/2026-09-29T074529Z/summary.md`.
+
+| Measurement | OpenAI-compatible | Messages | Messages divided by OpenAI-compatible |
+|---|---|---|---|
+| TTFB of the probe, new connection | 300.4 ms | 378.6 ms | 1.26 |
+| Total time of the probe, new connection | 300.5 ms | 693.4 ms | 2.31 |
+| TTFB of the probe, reused connection | 312.7 ms | 289.7 ms | 0.93 (same) |
+| Short answer: TTFT of the first token | 673.6 ms | 695.4 ms | 1.03 (same) |
+| Short answer: TTFT of the visible token | 825.5 ms | 820.2 ms | 0.99 (same) |
+| Short answer: total time | 828.9 ms | 822.9 ms | 0.99 (same) |
+| Long answer: TTFT of the first token | 674.3 ms | 719.3 ms | 1.07 (same) |
+| Long answer: TTFT of the visible token | 1344.1 ms | 1284.4 ms | 0.96 (same) |
+| Long answer: total time | 2524.4 ms | 2422.6 ms | 0.96 (same) |
+| Long answer: TPS of the sustained decoding | 367.2 tokens/s | 356.5 tokens/s | 0.97 (same) |
+| 4 parallel requests: rate of one request | 359.0 tokens/s | 361.8 tokens/s | 1.01 (same) |
+| 4 parallel requests: total rate | 780.9 tokens/s | 672.9 tokens/s | 0.86 |
+
+- Every row of a phase of the model comes out `same` at the 10 percent threshold of the tool, from
+  the short answer, 673.6 against 695.4 ms, to the rate of one request under load, 359.0 against
+  361.8 tokens/s. The surface that a client speaks does not change the latency of the model behind
+  it, and the round is what turns that from a guess into a measurement.
+- The two rows of the transport that look like a difference are not one. The probe of the
+  OpenAI-compatible surface is `GET /models`, a body of no tokens; the probe of the Messages one is
+  the smallest message that surface takes, one token, streamed. Its TTFB is comparable within a
+  quarter, 300.4 against 378.6 ms on a new connection and 312.7 against 289.7 ms with a ready
+  socket, and its total time is not comparable at all, 300.5 against 693.4 ms, because the second
+  probe waits for the model to write its token. Each transport record of that round names its probe.
+- What a surface changes is what a client can learn, not what the service costs. The Messages
+  surface reports no reasoning split, so `reasoning_tokens`, `content_tokens` and
+  `tok_per_s_visible` have no value on its side of the table: the round of the two surfaces is the
+  first of this file whose comparison cannot fill three of its rows. The sustained rate of the whole
+  answer is the rate that both sides hold, and there the two agree, 367.2 against 356.5 tokens/s.
+- The work of the two sides is close and not identical: the `long` phase wrote 611 output tokens on
+  the OpenAI-compatible side and 642 on the Messages one, inside the fifth that the tool tolerates
+  before it warns, so a rate of that phase is a rate of the path and not of a longer answer.
+
+
 ### OpenCode (Go) could not be measured on 2026-09-29
 
 A third A/B of that morning, `python bench.py ab --a commandcode --b opencode-go --n 4`, was started
@@ -282,12 +335,15 @@ is one, so a round of it would carry a transport table and no model at all. No r
 written for it, and every comparison of OpenCode (Go) in this file is therefore the one of
 2026-09-23, six days before these rounds.
 
-That round is also the one that found the defect of the runner that the rounds after it depend on: a
-refused stream was recorded as a clean row of nulls, because the tool read only the lines that start
-with `data:` and the body of a refusal is one JSON object. `bench.py` now asks `curl` for the status
-of each streaming request and records a stream that carries no delta as an error, with the status
-and a sample of the body beside it, so that a route which answers and does not serve states itself
-in the records instead of entering the medians as a row of nulls.
+That round is also the one that found two defects of the runner. A refused stream was recorded as a
+clean row of nulls, because the tool read only the lines that start with `data:` and the body of a
+refusal is one JSON object; and the three requests of the reused-socket probe were read out of every
+number in the output, where `-o` pairs with the URL that follows it, so the bodies of the second and
+the third transfer were left on stdout for the reader of the timings. `bench.py` now asks `curl` for
+the status of each streaming request, records a stream that carries no delta as an error with the
+status and a sample of the body beside it, and reads the timings of the reused probe from a marked
+token of its own. A route that answers and does not serve states itself in the records instead of
+entering the medians as a row of nulls.
 
 The keys of the rounds are read from the environment of the process or from the `.env` file beside
 the tool, on every platform; no result file and no summary holds one.
@@ -345,19 +401,23 @@ changes between rounds: the TTFT of one endpoint went from 620 ms to 2660 ms for
 The absolute values of two rounds are not comparable, because the host, the network path and the hour differ; compare the ratios only. The round did not test retries, tool calls, or streaming
 with tools. A measurement becomes stale, so measure again before you change a route or a budget.
 
-- The rounds of 2026-09-29 measure three routes inside a quarter of an hour of one morning, so the
-  ratios of the eighth round hold two routes at one moment, not a property of either route.
-- Two of those rounds compare routes that do not write the same number of output tokens for the same
-  prompt: in the A/B of 06:43Z the `long` phase differs by 8 percent (698 against 646.5 output
-  tokens) and the `concurrent_4` phase by 77 percent (635.5 against 1122, of which 136.5 against 622
-  are reasoning). The tool prints that under its table; the rate of the visible content is the row
-  that survives it, because it divides the same visible answer by the time on both sides.
-- The vendor route is measured on its OpenAI-compatible surface, `POST /v1/chat/completions`. The
-  Messages surface of the same service, `POST /anthropic/v1/messages`, which the desktop agent of
-  that host uses, is not a surface that `bench.py` speaks: it was read separately, outside this
-  repository, on the same host at 06:39Z, on 5 short and 4 long answers of the same two prompts, and
-  its delay to the first token agreed with the round of 06:36Z within 8 percent, 724.8 against
-  779.1 ms.
+- The five rounds of 2026-09-29 measure the four endpoints inside an hour and a half of one morning,
+  so a ratio of one of them holds two routes or two surfaces at one moment, not a property of
+  either.
+- The rounds of that morning compare routes that do not write the same number of output tokens for
+  the same prompt. In the A/B of 06:43Z the `long` phase differs by 8 percent (698 against 646.5
+  output tokens) and the `concurrent_4` phase by 77 percent (635.5 against 1122, of which 136.5
+  against 622 are reasoning); in the A/B of 07:45Z the `long` phase differs by 5 percent (611
+  against 642). The tool prints that under its table; the rate of the visible content is the row
+  that survives it, because it divides the same visible answer by the time on both sides — and on a
+  comparison against the Messages surface that row exists on one side only, which the tool also
+  prints.
+- The vendor route is measured on both of its surfaces, and the two of them are not
+  interchangeable: a table of the OpenAI-compatible one holds rows (`reasoning_tokens`,
+  `content_tokens`, `tok_per_s_visible`) that the Messages one cannot fill, because the usage
+  events of that surface report no reasoning split of the output tokens. The transport rows differ
+  in the probe: `GET /models`, a body of no tokens, against one streamed message of one token whose
+  TTFB holds the first event of the model as well as the edge.
 - OpenCode (Go) holds no round of 2026-09-29: its subscription refused every completion of that day
   while the transport of the route went on answering. Its rows in this file come from 2026-09-23.
 

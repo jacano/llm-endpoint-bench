@@ -1,23 +1,37 @@
 #!/usr/bin/env python3
-"""bench.py -- latency / throughput / TPS benchmark for OpenAI-compatible LLM endpoints.
+"""bench.py -- latency / throughput / TPS benchmark for OpenAI-compatible and Messages endpoints.
+
+An endpoint names one surface of one route, and every command of the tool works on both:
+
+  openai-completions   POST /chat/completions, the shape of the OpenAI API. The token counts
+                       and the reasoning split arrive in a trailing `usage` block.
+  anthropic-messages   POST /v1/messages, the shape of the Anthropic Messages API, with the
+                       key in `x-api-key` and a version header. The counts arrive split in
+                       two: the input at `message_start`, the output at `message_delta`. That
+                       surface reports no reasoning split, so `content_tokens` and the rate of
+                       the visible content are not rows of a round of it.
 
 Phases (all timed with curl + a browser UA, so no SDK retry logic hides the tail):
 
   transport   DNS/TCP/TLS/TTFB on /models, fresh connection, plus three sequential
               requests in one curl invocation (reused socket) -> separates one-time
               handshake cost from per-request gateway overhead; one more request
-              reads the body of /models, to confirm the model id of the route
+              reads the body of /models, to confirm the model id of the route.
+              A Messages route has no /models, so the probe of that phase is the
+              smallest message the surface takes: one token, streamed.
   short       streaming, tiny answer        -> latency a user actually feels on "hi"
   long        streaming, ~600-token answer  -> TTFT split + sustained decode tok/s
   concurrent  4 parallel long answers       -> per-request and aggregate throughput
 
-Token counts come from the response `usage` block.
+Token counts come from the response of the surface: the `usage` block of the OpenAI-compatible
+one, the two usage events of the Messages one.
 
 Examples
 --------
     python bench.py list
     python bench.py ab --a commandcode --b opencode-go     # the whole A/B, both sides
     python bench.py ab --a deepseek-official --b commandcode
+    python bench.py ab --a deepseek-official --b deepseek-official-messages
     python bench.py run --endpoint commandcode --phases short,long
     python bench.py report results/2026-09-23T210256Z
     python bench.py compare results/2026-09-23T210256Z
@@ -87,16 +101,31 @@ RATE_OF = {"tok_per_s_visible": ("content_tokens", "content tokens", MIN_CONTENT
 #: The marker that curl appends after the body of a streaming request: its HTTP status.
 #: A stream that carries no delta is a failed request, and the status is what names it.
 HTTP_MARK = "BENCH_HTTP:"
+#: The marker of the reused-socket probe, one transfer per URL. The numbers of that probe are
+#: read from the marked tokens only: `-o` pairs with the URL that follows it, so a body that
+#: leaks into the output of the three transfers can no longer be read as a timing.
+REUSE_MARK = "BENCH_REUSE:"
+#: The two surfaces that a route may speak, with the path of a streaming request and the path
+#: of the transport probe of each one. A route of the Messages surface lists no model ids, so
+#: its probe is the smallest message that the surface takes.
+OPENAI = "openai-completions"
+MESSAGES = "anthropic-messages"
+#: The version of the Messages surface that the tool asks for. A route of that surface refuses
+#: a request that carries no version, and this value is the one that every implementation takes.
+MESSAGES_VERSION = "2023-06-01"
 
 #: Known endpoints. `deepseek-v4.1-flash` is the same model on the two routes
 #: commandcode and opencode-go; only the id spelling and the transport differ.
-#: `deepseek-official` is the route of the vendor itself, which the two gateways
-#: above resell: same model, no gateway in the path.
+#: `deepseek-official` and `deepseek-official-messages` are the two surfaces of the
+#: route of the vendor itself, which the two gateways above resell: same model, no
+#: gateway in the path. An endpoint takes one surface, so a route of two surfaces
+#: takes two entries and the tool can put them against each other.
 ENDPOINTS = {
     "commandcode": {
         "base_url": "https://api.commandcode.ai/provider/v1",
         "model": "deepseek/deepseek-v4.1-flash",
         "key_env": "COMMANDCODE_API_KEY",
+        "api": OPENAI,
         "session_header": False,
     },
     "opencode-go": {
@@ -104,12 +133,21 @@ ENDPOINTS = {
         "model": "deepseek-v4.1-flash",
         "key_env": "OPENCODE_GO_API_KEY",
         "key_env_alt": ["OPENCODE_API_KEY"],  # the name that another program may set for it
+        "api": OPENAI,
         "session_header": True,  # 400 MissingSessionID without it
     },
     "deepseek-official": {
         "base_url": "https://api.deepseek.com/v1",
         "model": "deepseek-flash",
         "key_env": "DEEPSEEK_API_KEY",
+        "api": OPENAI,
+        "session_header": False,
+    },
+    "deepseek-official-messages": {
+        "base_url": "https://api.deepseek.com/anthropic",
+        "model": "deepseek-flash",
+        "key_env": "DEEPSEEK_API_KEY",
+        "api": MESSAGES,
         "session_header": False,
     },
 }
@@ -158,6 +196,7 @@ def endpoint(name: str) -> dict:
         sys.exit("unknown endpoint %r (known: %s)" % (name, ", ".join(ENDPOINTS)))
     ep = dict(ENDPOINTS[name])
     ep["name"] = name
+    ep["api"] = ep.get("api", OPENAI)
     # A route may carry a second name for its key on a machine where another program set it.
     # The first name that resolves wins, and that name is the one printed.
     ep["key_names"] = [ep["key_env"]] + list(ep.get("key_env_alt") or [])
@@ -174,10 +213,21 @@ def endpoint(name: str) -> dict:
 # ---------------------------------------------------------------------- transport
 
 def headers(ep: dict, session_id: str | None = None) -> list[str]:
-    h = ["-H", "Authorization: Bearer %s" % (ep["key"] or ""),
-         "-H", "Content-Type: application/json",
+    """The headers of a request on the surface of the endpoint.
+
+    The two surfaces authenticate differently: the OpenAI-compatible one takes a bearer token
+    and the Messages one takes the key in `x-api-key` with the version of the protocol beside
+    it. Everything else — the content type, a browser user agent that a gateway may insist on,
+    and the session header of one route — is the same for both.
+    """
+    h = ["-H", "Content-Type: application/json",
          "-H", "User-Agent: " + UA,
          "-H", "Accept: application/json"]
+    if ep["api"] == MESSAGES:
+        h += ["-H", "x-api-key: " + (ep["key"] or ""),
+              "-H", "anthropic-version: " + MESSAGES_VERSION]
+    else:
+        h = ["-H", "Authorization: Bearer %s" % (ep["key"] or "")] + h
     if ep["session_header"]:
         h += ["-H", "x-opencode-session: " + (session_id or str(uuid.uuid4()))]
     return h
@@ -195,7 +245,17 @@ def curl(args: list[str], body: str | None = None, timeout: int = 300) -> tuple[
 
 
 def transport(ep: dict) -> list[dict]:
-    """Fresh-connection /models timings, a socket-reuse probe, and the model id of the route."""
+    """The transport of a route: the handshake, a ready socket, and the model of the route.
+
+    A route of the OpenAI-compatible surface answers `GET /models`, which is a body of no
+    tokens: the three fresh rows, the three reused rows and the body row are cheap. A route
+    of the Messages surface lists no model ids at all, so its probe is the smallest message
+    that the surface takes — one token, streamed — and its rows carry the name of that probe
+    in the field `probe`. The TTFB of that probe holds the first event of the model as well
+    as the edge of the route, which the summary of such a round states.
+    """
+    if ep["api"] == MESSAGES:
+        return transport_messages(ep)
     recs = []
     url = ep["base_url"] + "/models"
     for i in range(3):
@@ -205,22 +265,25 @@ def transport(ep: dict) -> list[dict]:
         out, err = curl(args, timeout=60)
         p = out.split()
         if len(p) >= 6 and p[0] == "200":
-            recs.append({"kind": "models", "iter": i + 1, "code": p[0],
+            recs.append({"kind": "models", "iter": i + 1, "code": p[0], "probe": "GET /models",
                          "dns_ms": ms(p[1]), "tcp_ms": ms(p[2]), "tls_ms": ms(p[3]),
                          "ttfb_ms": ms(p[4]), "total_ms": ms(p[5])})
         else:
             recs.append({"kind": "models", "iter": i + 1, "code": p[0] if p else "?",
-                         "error": (out or err).strip()[:200]})
+                         "probe": "GET /models", "error": (out or err).strip()[:200]})
     # three sequential requests inside ONE curl -> the socket is reused, so TTFB
     # here is the per-request gateway overhead with no handshake in it.
-    # one -o per URL, else curl writes the extra bodies to stdout and the numbers
-    # get glued onto them.
-    args = ["curl", "-sS"] + ["-o", NULL] * 3 + headers(ep) + \
-        ["-w", "%{time_starttransfer}\n", url, url, url]
+    # `-o` pairs with the URL that follows it, so the null device is named once per
+    # URL: three `-o` in a row then three URLs would leave the bodies of the second
+    # and the third transfer on stdout.
+    args = ["curl", "-sS"]
+    for _ in range(3):
+        args += ["-o", NULL, url]
+    args += headers(ep) + ["-w", "\n" + REUSE_MARK + "%{time_starttransfer}"]
     out, _ = curl(args, timeout=90)
-    reuses = [ms(x) for x in out.split() if _is_number(x)]
+    reuses = [ms(t) for t in re.findall(re.escape(REUSE_MARK) + r"([0-9.]+)", out)]
     for i, t in enumerate(reuses):
-        recs.append({"kind": "models_reuse", "iter": i + 1, "ttfb_ms": t})
+        recs.append({"kind": "models_reuse", "iter": i + 1, "ttfb_ms": t, "probe": "GET /models"})
     # the body of /models names the model ids of the route: one request, and a
     # results file says whether the model of this endpoint exists on this route.
     out, err = curl(["curl", "-sS", url] + headers(ep), timeout=60)
@@ -228,19 +291,63 @@ def transport(ep: dict) -> list[dict]:
         ids = [m.get("id") for m in json.loads(out).get("data", [])]
     except Exception:
         ids = None
-    recs.append({"kind": "models_body", "iter": 1,
+    recs.append({"kind": "models_body", "iter": 1, "probe": "GET /models",
                  "n_ids": len(ids) if ids else None,
                  "target_present": ep["model"] in ids if ids else None,
                  "error": None if ids else (out or err).strip()[:200]})
     return recs
 
 
-def _is_number(token: str) -> bool:
+def transport_messages(ep: dict) -> list[dict]:
+    """The same three transport rows on a surface whose probe is a message of one token."""
+    recs = []
+    url = ep["base_url"] + "/v1/messages"
+    probe = json.dumps({"model": ep["model"], "max_tokens": 1, "stream": True,
+                        "messages": [{"role": "user", "content": PROMPT_SHORT}]})
+    fmt = ("%{http_code} %{time_namelookup} %{time_connect} %{time_appconnect} "
+           "%{time_starttransfer} %{time_total}")
+    for i in range(3):
+        args = ["curl", "-sS", "-o", NULL, "-X", "POST", url] + headers(ep) + \
+            ["--data-binary", probe, "-w", fmt]
+        out, err = curl(args, timeout=60)
+        p = out.split()
+        if len(p) >= 6 and p[0] == "200":
+            recs.append({"kind": "models", "iter": i + 1, "code": p[0],
+                         "probe": "POST /v1/messages, one token",
+                         "dns_ms": ms(p[1]), "tcp_ms": ms(p[2]), "tls_ms": ms(p[3]),
+                         "ttfb_ms": ms(p[4]), "total_ms": ms(p[5])})
+        else:
+            recs.append({"kind": "models", "iter": i + 1, "code": p[0] if p else "?",
+                         "probe": "POST /v1/messages, one token",
+                         "error": (out or err).strip()[:200]})
+    args = ["curl", "-sS"]
+    for _ in range(3):
+        args += ["-o", NULL, url]
+    args += ["-X", "POST"] + headers(ep) + \
+        ["--data-binary", probe, "-w", "\n" + REUSE_MARK + "%{time_starttransfer}"]
+    out, _ = curl(args, timeout=90)
+    reuses = [ms(t) for t in re.findall(re.escape(REUSE_MARK) + r"([0-9.]+)", out)]
+    for i, t in enumerate(reuses):
+        recs.append({"kind": "models_reuse", "iter": i + 1, "ttfb_ms": t,
+                     "probe": "POST /v1/messages, one token"})
+    # the stream of that probe names the model that the route served, which is what the body
+    # of `/models` names on the other surface.
+    out, err = curl(["curl", "-sS", "-X", "POST", url] + headers(ep) +
+                    ["--data-binary", probe], timeout=60)
+    served = None
     try:
-        float(token)
-        return True
-    except ValueError:
-        return False
+        for line in out.splitlines():
+            if line.startswith("data:"):
+                served = (json.loads(line[5:].strip()).get("message") or {}).get("model")
+                if served:
+                    break
+    except Exception:
+        served = None
+    recs.append({"kind": "models_body", "iter": 1, "probe": "POST /v1/messages, one token",
+                 "model_served": served,
+                 "target_present": served == ep["model"] if served else None,
+                 "error": None if served else (out or err).strip()[:200]})
+    return recs
 
 
 def ms(seconds: str) -> float:
@@ -249,20 +356,92 @@ def ms(seconds: str) -> float:
 
 # ----------------------------------------------------------------------- streaming
 
+def request_of(ep: dict, prompt: str, max_tokens: int) -> tuple[list[str], str]:
+    """The arguments of curl and the body of one streaming request on the surface of the endpoint.
+
+    The two surfaces take the same three fields and differ in the rest: the Messages surface
+    wants `max_tokens` always and knows no `stream_options`, and its path is `/v1/messages`
+    where the other one is `/chat/completions`.
+    """
+    if ep["api"] == MESSAGES:
+        body = {"model": ep["model"], "max_tokens": max_tokens, "stream": True,
+                "messages": [{"role": "user", "content": prompt}]}
+        url = ep["base_url"] + "/v1/messages"
+    else:
+        body = {"model": ep["model"], "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens, "stream": True,
+                "stream_options": {"include_usage": True}}
+        url = ep["base_url"] + "/chat/completions"
+    args = ["curl", "-sS", "-N", "-X", "POST", url] + headers(ep) + \
+        ["--data-binary", "@-", "-w", "\n" + HTTP_MARK + "%{http_code}"]
+    return args, json.dumps(body)
+
+
+def delta_of(ep: dict, chunk: dict) -> tuple[str, str] | None:
+    """The kind and the text of one chunk of a stream, or nothing.
+
+    The two surfaces name the same thing differently. `reason` is the text that the model
+    thinks with, which a user does not read; `content` is the text that a user reads.
+    """
+    if ep["api"] == MESSAGES:
+        if chunk.get("type") == "content_block_delta":
+            d = chunk.get("delta") or {}
+            if d.get("type") == "thinking_delta" and d.get("thinking"):
+                return "reason", d["thinking"]
+            if d.get("type") == "text_delta" and d.get("text"):
+                return "content", d["text"]
+        return None
+    delta = ((chunk.get("choices") or [{}])[0].get("delta")) or {}
+    if delta.get("reasoning") or delta.get("reasoning_content"):
+        return "reason", delta.get("reasoning") or delta["reasoning_content"]
+    if delta.get("content"):
+        return "content", delta["content"]
+    return None
+
+
+def counts_of(ep: dict, chunk: dict, counts: dict) -> dict:
+    """Merge the token counts of one chunk. The last value of a field wins.
+
+    The OpenAI-compatible surface reports the counts of the whole answer in a trailing `usage`
+    block, and it splits the reasoning out of the output tokens. The Messages surface reports
+    the input at the start of the stream and the output at its end, with no reasoning split:
+    `reasoning_tokens` and `content_tokens` stay empty on that surface, and the rate of the
+    visible content is not a row of a round of it. That is a property of the surface and not
+    of the model, and the summary of such a round states it.
+    """
+    u = chunk.get("usage") or {}
+    if ep["api"] == MESSAGES:
+        if u.get("input_tokens") is not None:
+            counts["in_tokens"] = u["input_tokens"]
+        if u.get("output_tokens") is not None:
+            counts["out_tokens"] = u["output_tokens"]
+    else:
+        if u.get("prompt_tokens") is not None:
+            counts["in_tokens"] = u["prompt_tokens"]
+        if u.get("completion_tokens") is not None:
+            counts["out_tokens"] = u["completion_tokens"]
+    details = u.get("output_tokens_details") or u.get("completion_tokens_details") or {}
+    if details.get("reasoning_tokens") is not None:
+        counts["reasoning_tokens"] = details["reasoning_tokens"]
+    return counts
+
+
+def error_of(ep: dict, chunk: dict) -> str | None:
+    """The text of an error that a chunk carries, in the shape of the surface."""
+    if chunk.get("type") == "error":
+        return json.dumps(chunk.get("error") or chunk)[:200]
+    return None
+
+
 def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
-    """Streaming request; TTFT split + exact token counts from the trailing usage block.
+    """Streaming request on the surface of the endpoint: TTFT split + the token counts.
 
     A stream that carries no delta is a failed request and not a fast one: a gateway that
     answers `403` with a JSON error object sends no `data:` line at all, and a record of
     nulls beside the clean ones is worse than no record. The HTTP status and a sample of
     the body or of the error of curl travel with the record for that reason.
     """
-    body = {"model": ep["model"], "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens, "stream": True,
-            "stream_options": {"include_usage": True}}
-    payload = json.dumps(body)
-    args = ["curl", "-sS", "-N", "-X", "POST", ep["base_url"] + "/chat/completions"] + \
-        headers(ep) + ["--data-binary", "@-", "-w", "\n" + HTTP_MARK + "%{http_code}"]
+    args, payload = request_of(ep, prompt, max_tokens)
     t0 = time.perf_counter()
     proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, bufsize=1,
@@ -271,7 +450,8 @@ def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
     proc.stdin.close()
     first_any = first_reason = first_content = last = None
     n_unparseable = 0
-    usage, errsample, http_code, plain = {}, None, None, []
+    counts = {"in_tokens": None, "out_tokens": None, "reasoning_tokens": None}
+    errsample, http_code, plain = None, None, []
     for raw in proc.stdout:
         now = time.perf_counter() - t0
         raw = raw.strip()
@@ -281,6 +461,8 @@ def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
             http_code = raw.split(HTTP_MARK, 1)[1].strip()
             continue
         if not raw.startswith("data:"):
+            if raw.startswith("event:"):
+                continue  # a protocol line of the Messages surface, not a body of a refusal
             if len(plain) < 5:  # a body that is not the stream: an error object, a page of a proxy
                 plain.append(raw[:200])
             continue
@@ -294,31 +476,38 @@ def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
         except Exception:
             n_unparseable += 1
             continue
-        if chunk.get("usage"):
-            usage = chunk["usage"]
-        delta = ((chunk.get("choices") or [{}])[0].get("delta")) or {}
-        if delta.get("reasoning") or delta.get("reasoning_content"):
+        errsample = errsample or error_of(ep, chunk)
+        counts_of(ep, chunk, counts)
+        delta = delta_of(ep, chunk)
+        if delta:
             first_any = now if first_any is None else first_any
-            first_reason = now if first_reason is None else first_reason
-            last = now
-        elif delta.get("content"):
-            first_any = now if first_any is None else first_any
-            first_content = now if first_content is None else first_content
+            if delta[0] == "reason":
+                first_reason = now if first_reason is None else first_reason
+            else:
+                first_content = now if first_content is None else first_content
             last = now
     proc.wait()
     err_text = (proc.stderr.read() or "").strip() if proc.stderr else ""
     if n_unparseable and errsample is None:
         errsample = "%d lines of the stream did not parse as JSON" % n_unparseable
-    if errsample is None and plain:
-        errsample = " ".join(plain)[:200]
-    if errsample is None and err_text:
-        errsample = err_text[:200]
     if errsample is None and first_any is None:
-        errsample = ("the stream carried no delta (http %s)" % (http_code or "?")
-                     if http_code else "the stream carried no delta")
+        # no delta at all: the request failed, and the body of the refusal or the message of
+        # curl is what names it. A stream that did arrive is not judged by the text of curl.
+        if plain:
+            errsample = " ".join(plain)[:200]
+        elif err_text:
+            errsample = err_text[:200]
+        else:
+            errsample = ("the stream carried no delta (http %s)" % (http_code or "?")
+                         if http_code else "the stream carried no delta")
+    if errsample is None and counts["out_tokens"] is None:
+        # the answer arrived and the surface never reported what it cost: a stream that a
+        # connection cut holds no counts, and a rate cannot be read out of it.
+        errsample = "the stream ended without the token counts" + \
+            (" (%s)" % err_text[:120] if err_text else "")
     end = time.perf_counter() - t0
-    out_tok = usage.get("completion_tokens")
-    reason_tok = (usage.get("completion_tokens_details") or {}).get("reasoning_tokens")
+    out_tok = counts["out_tokens"]
+    reason_tok = counts["reasoning_tokens"]
     content_tok = out_tok - reason_tok if (out_tok is not None and reason_tok is not None) else None
     gen = (last - first_any) if (last is not None and first_any is not None) else None
     vis = (last - first_content) if (last is not None and first_content is not None) else None
@@ -328,7 +517,7 @@ def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
         "ttft_content_ms": round(first_content * 1000, 1) if first_content is not None else None,
         "total_ms": round(end * 1000, 1),
         "gen_ms": round(gen * 1000, 1) if gen else None,
-        "in_tokens": usage.get("prompt_tokens"),
+        "in_tokens": counts["in_tokens"],
         "out_tokens": out_tok,
         "reasoning_tokens": reason_tok,
         "content_tokens": content_tok,
@@ -422,8 +611,8 @@ def write_results(recs: list[dict], ep: dict, phases: list[str], out_dir: str | 
     tag = prefix + "".join(c if c.isalnum() or c in "-_." else "_" for c in ep["name"])
     path = os.path.join(out_dir, "%s_%s.json" % (tag, stamp))
     payload = {"meta": {"endpoint": ep["name"], "base_url": ep["base_url"], "model": ep["model"],
-                        "phases": phases, "started_utc": stamp, "host": platform.node(),
-                        "runner": "bench.py"},
+                        "api": ep["api"], "phases": phases, "started_utc": stamp,
+                        "host": platform.node(), "runner": "bench.py"},
                "records": recs}
     # A fixed encoding and a fixed line ending, so that a record of one platform is the record of
     # another byte for byte: a text stream would translate `\n` on Windows.
@@ -449,13 +638,18 @@ def load_meta(path: str) -> dict:
 
 
 def generation_line(path: str) -> str:
-    """When and where a file was written. A file of a session before bench.py holds no meta."""
+    """When and where a file was written. A file of a session before bench.py holds no meta.
+
+    The field `api` names the surface of the round, and a file written before the tool spoke
+    two surfaces holds none: every one of those measured the OpenAI-compatible surface, which
+    is what the reader of such a file is told here.
+    """
     m = load_meta(path)
     if not m:
         return "no meta block: the file records no time of the run"
-    return "generated %s on %s | endpoint %s | model %s | phases %s" % (
+    return "generated %s on %s | endpoint %s | api %s | model %s | phases %s" % (
         m.get("started_utc", "?"), m.get("host", "?"), m.get("endpoint", "?"),
-        m.get("model", "?"), ",".join(m.get("phases") or []))
+        m.get("api", OPENAI), m.get("model", "?"), ",".join(m.get("phases") or []))
 
 
 #: The stamp that the tool puts at the end of a file name.
@@ -539,17 +733,29 @@ def report(path: str) -> None:
                                                 ("n", "wall_s", "out_tokens", "aggregate_tok_per_s", "request_per_s") if m in rows[0]})
             continue
         elif k == "models_body":
-            print("  models_body: %s" % {m: rows[0].get(m) for m in ("n_ids", "target_present")
-                                         if m in rows[0]})
+            row = rows[0]
+            # the two surfaces report different facts here: the ids of the route and the id
+            # that the route served. Print the ones that this surface holds.
+            print("  models_body: %s" % {m: row[m] for m in ("n_ids", "model_served",
+                                                             "target_present")
+                                         if row.get(m) is not None})
             continue
         else:
             keys = ["ttft_any_ms", "ttft_content_ms", "total_ms", "in_tokens", "out_tokens",
                     "reasoning_tokens", "content_tokens", "tok_per_s_total", "tok_per_s_visible"]
-        print("  %-18s n=%d" % (k, len(rows)))
+        head = "  %-18s n=%d" % (k, len(rows))
+        if rows[0].get("probe"):
+            head += "  probe: %s" % rows[0]["probe"]
+        print(head)
+        absent = []
         for key in keys:
             vals = [r.get(key) for r in rows]
             m = med(vals)
             if m is None:
+                # A surface reports what it reports: the Messages one carries no reasoning
+                # split, so three rows of a phase of it have no value at all. Say so, rather
+                # than let a reader look for a row that the table cannot hold.
+                absent.append(key)
                 continue
             thin = thin_answer(key, rows)
             if thin:
@@ -559,6 +765,8 @@ def report(path: str) -> None:
                 continue
             nums = [v for v in vals if isinstance(v, (int, float))]
             print("      %-18s median %-9s min %-9s max %-9s" % (key, m, round(min(nums), 1), round(max(nums), 1)))
+        if absent:
+            print("      %-18s %s (no clean record of this phase holds one)" % ("not reported", ", ".join(absent)))
 
 
 # ----------------------------------------------------------------- comparison
@@ -610,6 +818,7 @@ def compare(path_a: str, path_b: str) -> None:
     hidden = {}
     few_samples = set()
     work = {}
+    one_sided = {}
     for kind in ks:
         rows_a = [r for r in ra if r.get("kind") == kind]
         rows_b = [r for r in rb if r.get("kind") == kind]
@@ -627,6 +836,11 @@ def compare(path_a: str, path_b: str) -> None:
             b = med([r.get(key) for r in rows_b])
             if a is None and b is None:
                 continue
+            if (a is None) != (b is None):
+                # One surface may report what the other does not: the Messages one carries no
+                # reasoning split, so `content_tokens` and the rate of the visible content have
+                # no value on that side of a table. Name the rows instead of leaving a dash.
+                one_sided.setdefault(key, set()).add(kind)
             thin = thin_answer(key, rows_a, rows_b)
             if thin:
                 hidden.setdefault(key, [set(), thin])[0].add(kind)
@@ -635,6 +849,11 @@ def compare(path_a: str, path_b: str) -> None:
             print("| %s | %s | %s | %s | %s | %d/%d | %s |"
                   % (kind, key, fmt(a), fmt(b), fmt(ratio), present(rows_a, key), present(rows_b, key),
                      verdict(key, a, b, la, lb, n)))
+    for key in sorted(one_sided):
+        print("")
+        print("`%s` is empty on one side of %s: the surface of that side does not report the "
+              "value, or no clean record of the phase holds it."
+              % (key, ", ".join(sorted(one_sided[key]))))
     for key in sorted(hidden):
         kinds_hidden, (floor, words) = hidden[key]
         print("")
@@ -704,7 +923,7 @@ def cmd_run(args) -> None:
         sys.exit("no API key for %s: set %s in the environment, or in the .env file beside the "
                  "tool" % (ep["name"], " or ".join(ep["key_names"])))
     phases = phases_of(args.phases)
-    print("endpoint=%s model=%s phases=%s" % (ep["name"], ep["model"], phases))
+    print("endpoint=%s api=%s model=%s phases=%s" % (ep["name"], ep["api"], ep["model"], phases))
     recs = run_phases(ep, phases)
     path = write_results(recs, ep, phases, args.out_dir or default_out_dir())
     print("wrote", path)
@@ -767,8 +986,8 @@ def main() -> None:
             ep = endpoint(name)
             state = ("found (%s, from %s)" % (ep["key_var"], ep["key_from"])) if ep["key"] \
                 else "MISSING"
-            print("%-18s %-45s model=%-28s key=%s %s%s" % (
-                name, cfg["base_url"], cfg["model"], ep["key_var"], state,
+            print("%-28s %-42s api=%-20s model=%-28s key=%s %s%s" % (
+                name, cfg["base_url"], ep["api"], cfg["model"], ep["key_var"], state,
                 "  (+ x-opencode-session)" if cfg["session_header"] else ""))
         return
     args.func(args)
