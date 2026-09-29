@@ -34,17 +34,23 @@ The tables of each round, the analysis of the differences and the limits of the 
 
 ## Requirements
 
-`python` and `curl`, and a key of each endpoint that you measure. A key is looked for in four
-places, and the first one that holds it wins:
+`python` and `curl`, on Windows, macOS or Linux, and nothing else: the standard library of Python
+holds every other line of the tool. A result file is written as UTF-8 JSON with `\n` line endings,
+so the same run produces the same bytes on any of the three, and the one platform detail that
+`bench.py` carries is the null device that `curl` reads (`NUL` on Windows, `/dev/null` elsewhere).
+
+A key of each endpoint that you measure is looked for in two places, and the first that holds it
+wins:
 
 | Place | Note |
 |---|---|
 | The environment of the process | A `COMMANDCODE_API_KEY=... python bench.py list` wins over everything |
-| The user environment of Windows | The registry value of `HKCU\Environment`, which a process that a desktop app started does not inherit |
-| A `.env` file beside the tool | Already in `.gitignore`, and the place to put a key for one route |
-| The profile of the Hermes Agent desktop app | Its two `.env` paths are read; its credential pool holds a fingerprint and not a value |
+| A `.env` file beside the tool | Keeps a key across runs, is already in `.gitignore`, and is the place to put a key |
 
-The tool prints the name of the key variable and the place it came from, never the value.
+Anywhere else a key may live — the environment of a shell that did not pass it on, the vault of a
+desktop program — it is copied into that `.env` file by hand, which is one step and leaves the tool
+with no dependency of its own. The tool prints the name of the key variable and the place it came
+from, never the value.
 
 | Endpoint | Base URL | Model | Key variable | Extra header |
 |---|---|---|---|---|
@@ -131,9 +137,9 @@ aggregations of the first session are the commands `report` and `compare`.
 - The tool speaks the OpenAI-compatible surface of a route, `POST /chat/completions`. The vendor
   route also answers on `POST /anthropic/v1/messages`, which this tool does not measure and whose
   numbers are therefore not rows of these tables.
-- A key that the user set for the whole account on Windows lives in the registry and not in the
-  environment of a process that a desktop app started: read it as `bench.py` does, or the tool
-  reports the route as `MISSING` while its key is present on the machine.
+- A key that the process does not carry in its environment is a key that the tool cannot see: put
+  it in the `.env` file beside the tool, whichever platform holds it, and `python bench.py list`
+  says where it found it.
 - A route can authenticate and list its models while it refuses every completion: OpenCode (Go) did
   that on 2026-09-29, `403 An active OpenCode Go subscription is required to use Go models`, with
   `/models` answering `200` all the while. Such a request is an error in a result file, with its

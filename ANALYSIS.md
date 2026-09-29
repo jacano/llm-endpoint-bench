@@ -282,14 +282,15 @@ is one, so a round of it would carry a transport table and no model at all. No r
 written for it, and every comparison of OpenCode (Go) in this file is therefore the one of
 2026-09-23, six days before these rounds.
 
-That round is also the one that found the two defects of the runner that this file's later rounds
-depend on: a refused stream was recorded as a clean row of nulls, because the tool read only lines
-that start with `data:` and the body of the refusal is one JSON object; and the tool could not see a
-key that the user set for the whole account on Windows, because the registry value does not reach
-the environment of a process that a desktop app started. `bench.py` now reads the status of each
-streaming request, records a stream that carries no delta as an error with the status and a sample
-of the body beside it, and looks for a key in the environment, in the user environment of Windows
-and in a `.env` file, in that order.
+That round is also the one that found the defect of the runner that the rounds after it depend on: a
+refused stream was recorded as a clean row of nulls, because the tool read only the lines that start
+with `data:` and the body of a refusal is one JSON object. `bench.py` now asks `curl` for the status
+of each streaming request and records a stream that carries no delta as an error, with the status
+and a sample of the body beside it, so that a route which answers and does not serve states itself
+in the records instead of entering the medians as a row of nulls.
+
+The keys of the rounds are read from the environment of the process or from the `.env` file beside
+the tool, on every platform; no result file and no summary holds one.
 
 
 ## What holds between the rounds

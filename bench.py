@@ -28,11 +28,9 @@ the UTC time of the run, so a second run of the same day cannot mix with the fir
 --out-dir to put the files of several commands in one directory of a round. `report` and
 `compare` accept a directory as well as a file, and results/README.md states the layout.
 
-Keys are read from the environment of the process, then from the user environment of
-Windows (which a process that a desktop app started does not inherit), then from a `.env`
-file beside the tool, then from the profile of the Hermes Agent desktop app when the machine
-holds one. Names and places are printed; a value never is. Nothing in this repo contains a
-credential.
+Keys are read from the environment of the process, then from a `.env` file beside the tool. The
+name of the variable and the place it came from are printed; a value never is. Nothing in this
+repo contains a credential.
 """
 from __future__ import annotations
 
@@ -54,14 +52,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(HERE, "results")
 #: curl is a native program: it reads the null device of the system, not the mount `/dev/null`.
 NULL = "NUL" if os.name == "nt" else "/dev/null"
-#: Where a key may live, after the environment. The first file that defines a key wins; names
-#: only are ever printed. A `.env` beside the tool carries the key of whatever endpoint you use,
-#: and it is already in .gitignore. The two paths below it are only a convenience for a
-#: machine where the Hermes Agent desktop app holds the keys.
+#: Where a key may live, after the environment of the process. A `.env` file beside the tool is
+#: one path on every platform (`HERE` holds the separator of the platform), the first file that
+#: defines a key wins, and names only are ever printed. The file is in `.gitignore`, so the key
+#: of one route stays out of the repository.
 ENV_FILES = [
     os.path.join(HERE, ".env"),
-    os.path.expanduser("~/.hermes/.env"),
-    os.path.join(os.environ.get("LOCALAPPDATA", ""), "hermes", ".env"),
 ]
 
 
@@ -107,7 +103,7 @@ ENDPOINTS = {
         "base_url": "https://opencode.ai/zen/go/v1",
         "model": "deepseek-v4.1-flash",
         "key_env": "OPENCODE_GO_API_KEY",
-        "key_env_alt": ["OPENCODE_API_KEY"],  # the name the desktop agent of that route uses
+        "key_env_alt": ["OPENCODE_API_KEY"],  # the name that another program may set for it
         "session_header": True,  # 400 MissingSessionID without it
     },
     "deepseek-official": {
@@ -136,41 +132,20 @@ def load_env_file(path: str | None = None) -> dict:
     return out
 
 
-def windows_user_env() -> dict:
-    """The user environment of Windows: the one place a key can live unseen.
-
-    A key that the user sets for the whole account reaches every shell that the user
-    opens and never reaches the process tree of an app that was started before it, so
-    a tool that reads `os.environ` alone calls that key missing and asks for a copy of
-    it. Read the registry value here instead, so that one place holds the key.
-    """
-    if os.name != "nt":
-        return {}
-    try:
-        import winreg
-    except ImportError:  # a build of Python without the module
-        return {}
-    out = {}
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
-            for i in range(winreg.QueryInfoKey(key)[1]):
-                name, value, _ = winreg.EnumValue(key, i)
-                out[name] = value
-    except OSError:
-        return {}
-    return out
-
-
 def key_from(name: str) -> tuple[str | None, str | None]:
-    """The value of a key and where it came from. The value is never printed anywhere."""
+    """The value of a key and where it came from. The value is never printed anywhere.
+
+    Two places, in this order, on every platform: the environment of the process, which a caller
+    sets for one run (`COMMANDCODE_API_KEY=... python bench.py list`), and the `.env` file beside
+    the tool, which keeps a key across runs. A key that lives anywhere else — in the environment
+    of a shell that did not pass it on, or in a store of another program — is copied into that
+    file by hand, which is one step and leaves the tool with no dependency of its own.
+    """
     if os.environ.get(name):
         return os.environ[name], "the environment"
-    env = windows_user_env()
-    if env.get(name):
-        return env[name], "the user environment of Windows"
     found = load_env_file().get(name)
     if found:
-        return found, "a .env file"
+        return found, "the .env file beside the tool"
     return None, None
 
 
@@ -183,9 +158,8 @@ def endpoint(name: str) -> dict:
         sys.exit("unknown endpoint %r (known: %s)" % (name, ", ".join(ENDPOINTS)))
     ep = dict(ENDPOINTS[name])
     ep["name"] = name
-    # One key may carry a second variable name on a machine where another program set
-    # it (`OPENCODE_API_KEY` for the route that this tool calls `opencode-go`). The
-    # first name that resolves wins, and that name is the one printed.
+    # A route may carry a second name for its key on a machine where another program set it.
+    # The first name that resolves wins, and that name is the one printed.
     ep["key_names"] = [ep["key_env"]] + list(ep.get("key_env_alt") or [])
     ep["key"], ep["key_var"], ep["key_from"] = None, ep["key_env"], None
     for var in ep["key_names"]:
@@ -210,8 +184,13 @@ def headers(ep: dict, session_id: str | None = None) -> list[str]:
 
 
 def curl(args: list[str], body: str | None = None, timeout: int = 300) -> tuple[str, str]:
-    """Run curl and return (stdout, stderr). The phases take their own timings."""
-    r = subprocess.run(args, input=body, capture_output=True, text=True, timeout=timeout)
+    """Run curl and return (stdout, stderr). The phases take their own timings.
+
+    The pipes are decoded as UTF-8 with a replacement for a stray byte, so that a model id or an
+    error message with a character outside ASCII reads the same on every platform.
+    """
+    r = subprocess.run(args, input=body, capture_output=True, text=True, timeout=timeout,
+                       encoding="utf-8", errors="replace")
     return r.stdout, r.stderr
 
 
@@ -286,7 +265,8 @@ def stream(ep: dict, prompt: str, max_tokens: int) -> dict:
         headers(ep) + ["--data-binary", "@-", "-w", "\n" + HTTP_MARK + "%{http_code}"]
     t0 = time.perf_counter()
     proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, text=True, bufsize=1)
+                            stderr=subprocess.PIPE, text=True, bufsize=1,
+                            encoding="utf-8", errors="replace")
     proc.stdin.write(payload)
     proc.stdin.close()
     first_any = first_reason = first_content = last = None
@@ -445,7 +425,9 @@ def write_results(recs: list[dict], ep: dict, phases: list[str], out_dir: str | 
                         "phases": phases, "started_utc": stamp, "host": platform.node(),
                         "runner": "bench.py"},
                "records": recs}
-    with open(path, "w") as fh:
+    # A fixed encoding and a fixed line ending, so that a record of one platform is the record of
+    # another byte for byte: a text stream would translate `\n` on Windows.
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(payload, fh, indent=1)
     return path
 
@@ -453,14 +435,16 @@ def write_results(recs: list[dict], ep: dict, phases: list[str], out_dir: str | 
 # ------------------------------------------------------------------------- reports
 
 def load_records(path: str) -> list[dict]:
-    data = json.load(open(path))
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
     if isinstance(data, dict):
         return data.get("records", [])
     return data  # bare list, e.g. the raw session dumps in results/
 
 
 def load_meta(path: str) -> dict:
-    data = json.load(open(path))
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
     return (data.get("meta") or {}) if isinstance(data, dict) else {}
 
 
@@ -717,9 +701,8 @@ def cmd_ab(args) -> None:
 def cmd_run(args) -> None:
     ep = endpoint(args.endpoint)
     if not ep["key"]:
-        sys.exit("no API key for %s: set %s in the environment, in the user environment of "
-                 "Windows, or in a .env file beside the tool"
-                 % (ep["name"], " or ".join(ep["key_names"])))
+        sys.exit("no API key for %s: set %s in the environment, or in the .env file beside the "
+                 "tool" % (ep["name"], " or ".join(ep["key_names"])))
     phases = phases_of(args.phases)
     print("endpoint=%s model=%s phases=%s" % (ep["name"], ep["model"], phases))
     recs = run_phases(ep, phases)

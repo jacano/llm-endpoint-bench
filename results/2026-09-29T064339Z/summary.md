@@ -123,8 +123,8 @@ The vendor route was measured alone 7 minutes before this A/B
   which `bench.py` does not speak; `../2026-09-29T063619Z/summary.md` states what that surface was
   read to do.
 - The round did not test retries, tool calls, or streaming with tools.
-- The keys of the two routes are read from the environment, from the user environment of Windows and
-  from `.env` beside the tool, which is in `.gitignore`; no result file and no summary holds one.
+- The keys of the two routes are read from the environment of the process or from `.env` beside the
+  tool, which is in `.gitignore`; no result file and no summary holds one.
 
 ## Raw data in this directory
 
